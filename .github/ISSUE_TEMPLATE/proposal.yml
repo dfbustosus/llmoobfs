@@ -1,19 +1,49 @@
 name: Proposal or question
 description: Discuss an idea, architecture change or usage question.
 body:
+  - type: markdown
+    attributes:
+      value: >-
+        MoobFS is a native Linux stacked filesystem layer (ADR-0001, ADR-0007).
+        Proposals to replace it with FUSE, a daemon or a user-space API are out
+        of scope. Performance arguments need measurements (see
+        docs/benchmark-plan.md) and are labelled `status/needs-evidence`.
   - type: textarea
     id: need
     attributes:
       label: Problem or question
-      description: What are you trying to do, and why does it matter?
+      description: What are you trying to do, and why does it matter? Which real client or workflow needs it?
     validations:
       required: true
   - type: textarea
     id: approach
     attributes:
       label: Proposed approach and alternatives
+      description: Include the alternatives you considered and why you prefer this one.
+  - type: input
+    id: adr
+    attributes:
+      label: Related ADR
+      description: "Link to the ADR in docs/decisions/ this builds on or would supersede, or write `new ADR needed` or `none` (not architectural)."
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: Keeps MoobFS a native kernel filesystem layer (no FUSE, no daemon, no user-space replacement).
+        - label: Changes the UAPI (`include/moobfs_ioctl.h`) — specification, version bump, invalid-input tests and compatibility decision will be needed.
+        - label: Changes the attribute encoding or the M1 image format — specification, invalid-input tests and compatibility decision (ADR) will be needed.
+        - label: Adds a lower filesystem or a kernel version to the tested matrix.
+        - label: Depends on M4 benchmark results (will be labelled `status/blocked-on-m4`).
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests planned
+      description: Which tests would prove it works and which would prove it rejects bad input? Host (`tests/`), VM (`vm/suite.sh`), KASAN, oracle comparison (`moobfs-index`)?
   - type: textarea
     id: validation
     attributes:
-      label: Validation and compatibility
-      description: How could we evaluate this? Would it change the image format or supported kernel?
+      label: Compatibility and limitations
+      description: Effect on existing lower trees, mounted systems, the supported kernel and on what is written to the lower filesystem.

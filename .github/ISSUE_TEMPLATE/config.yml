@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Private security report
+  - name: Private security report (GitHub Security Advisories)
+    url: https://github.com/studiomoob/llmoobfs/security/advisories/new
+    about: Report vulnerabilities privately. Never in a public issue. See SECURITY.md for scope and response targets.
+  - name: Private security report (email)
     url: mailto:claudio@studiomoob.com
-    about: Send vulnerability details privately.
+    about: Alternative private channel for vulnerability details.
+  - name: Contributing guide
+    url: https://github.com/studiomoob/llmoobfs/blob/main/CONTRIBUTING.md
+    about: How to build, test, sign off (DCO) and submit changes.

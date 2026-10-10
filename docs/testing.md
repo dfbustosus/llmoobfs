@@ -1,117 +1,169 @@
-# Reproduce M1
+# Testing guide
 
-## Portable tools
+What each test in MoobFS runs, what its success markers prove and, as important,
+what they do not prove. Environment setup, build commands and how to add a test
+are in [development.md](development.md).
 
-Requirements: C11 compiler, Make and Python 3. On Linux or macOS, run `make test`.
-The nine test methods include exact-byte sharing, distinct data, hash boundary
-sizes, an independent CRC vector, deterministic images, overwrite refusal, limits,
-128 objects and 15 malformed variants. Boundary lengths range from 0 to 65536 bytes.
+Never load `moobfs.ko` or `moobfs_layer.ko` on your host. The harness boots a
+disposable QEMU guest; that is the only supported way to run the module.
 
-`make test` also runs `tests/attr_test.c`, the host unit tests of the typed attribute
-encoding shared by the kernel layer and the tools. `make fuzz FUZZ_TIME=30` runs the
-libFuzzer target in `tests/fuzz_attr.c` (LLVM clang with libFuzzer, as in CI; Apple
-clang does not ship it). `make attr-tools` builds the Linux-only `moobfs-attr` and
-`moobfs-check`.
+## 1. Prerequisites
 
-Run tools with sanitizers in a separate output directory:
+| To run | You need |
+| --- | --- |
+| `make test` | C11 compiler, GNU Make, Python 3 (Linux or macOS) |
+| `make fuzz` | LLVM clang with libFuzzer (CI uses it; Apple clang does not ship it) |
+| `make vm-test` | Docker. No KVM, no privileged container, no network inside the guest. The first run downloads the Debian base and kernel packages |
+| KASAN/lockdep | Linux x86-64 with QEMU and `virtme-ng 1.41`, or trigger `.github/workflows/kasan.yml` |
 
-```sh
-make test BUILD=build/asan \
-  CFLAGS='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer' \
-  LDFLAGS='-fsanitize=address,undefined'
-```
+Disk and time: `build/` grows to several GiB with the kernel tree for KASAN.
+Measured wall-clock times per machine are not recorded yet; the CI timeouts are
+35 minutes for the VM job and 150 minutes for KASAN, and the QEMU phase of
+`make vm-test` is bounded by `timeout 600`.
 
-## Native module in a disposable VM
+## 2. Targets
 
-With Docker running, `make vm-test` builds the container described in
-`vm/Dockerfile`, compiles the module against **6.12.111+deb13-amd64** headers and
-boots that matching kernel in QEMU TCG. Docker is only the build/launch environment.
-The module is loaded inside QEMU, not into the host or Docker kernel. No privileged
-container, KVM device or network inside the guest is required.
+| Target | What it builds and runs | Where it writes |
+| --- | --- | --- |
+| `make` / `make tools` | `mkfs.moobfs`, `fsck.moobfs`, `attr_test` | `build/host/` (`BUILD=` overrides) |
+| `make test` | `attr_test` (host unit tests of the typed attribute encoding) and `tests/test_images.py`: nine tests covering exact-byte sharing, distinct data, hash boundary sizes (0 to 65536 bytes), an independent CRC vector, deterministic images, overwrite refusal, limits, 128 objects and 15 malformed variants | `build/host/` |
+| `make test BUILD=build/asan CC=clang CFLAGS=... LDFLAGS=...` | Same, under ASan and UBSan (see development.md for the exact flags) | `build/asan/` |
+| `make fuzz FUZZ_TIME=30` | libFuzzer over `common/attr.c` from `tests/fuzz_attr.c`, seeded by `tests/fuzz-corpus/attr` | `build/host/fuzz_attr`, `build/host/fuzz-corpus/` |
+| `make attr-tools` | Linux-only `moobfs-attr`, `moobfs-check`, `moobfs-index` | `build/host/` |
+| `make module` / `make layer` | `kernel/moobfs.ko` / `layer/moobfs_layer.ko` against `KDIR` | in-tree (`kernel/`, `layer/`) |
+| `make vm-test` | Docker image, both modules, tests and the full guest run (M1 regression, layer suite, acceptance) on Debian **6.12.111+deb13-amd64** under QEMU TCG | `build/vm/` |
+| KASAN workflow | Upstream **6.12.112** with `vm/kasan.config` (KASAN, UBSAN, lockdep), the same `vm/suite.sh` inside virtme-ng | `build/vng/`, `build/linux/` |
 
-Expect a longer first run for downloads and x86 emulation on ARM hosts. The QEMU
-phase has a 180-second timeout; outer build time depends on downloads. If the pinned
-Debian package becomes unavailable, update the image/kernel together through a
-reviewed change and repeat the suite; do not silently substitute host headers.
-The Debian base digest and kernel package are fixed, but auxiliary apt packages
-are not fully locked. This is not a claim of bit-for-bit toolchain reproducibility.
+The Debian base digest and kernel package are pinned, but auxiliary apt packages
+are not fully locked: this is not a claim of bit-for-bit toolchain
+reproducibility. If the pinned Debian package disappears, update image and
+kernel together through a reviewed change and rerun the suite; do not substitute
+host headers silently.
 
-Generated evidence in `build/vm/`:
+## 3. Markers and what they mean
+
+A run is read from the console log. Success markers are printed only after the
+checks they summarize; a failure prints exactly one `MOOBFS_VM_FAIL: <step>` and
+stops. Markers come from three places: `vm/init` and `tests/mounted.c` (M1),
+`vm/suite.sh` and the test binaries it calls (layer), `vm/kasan-guest.sh` (KASAN).
+
+### M1 regression (`vm/init`, Debian harness only)
+
+| Marker | Printed by | Proves | Does not prove |
+| --- | --- | --- | --- |
+| `SHARED: inode=A/B physical=P length=L` | `tests/mounted.c` | Two files with different inode numbers report the same physical extent through FIEMAP | Page-cache sharing; anything about writes |
+| `MOUNTED_READ_TESTS_PASS` | `tests/mounted.c` | Full reads, positional reads, EOF and seek return exactly the expected fixture bytes on the mounted M1 image | Behaviour on other images or kernels |
+| `WRITABLE_MOUNT_REJECTED` | `tests/mounted.c --reject-rw` | A read-write mount of the loop device is refused | Protection against writes to the backing device from outside |
+| `MOOBFS_VM_PASS: ...` | `vm/init` | All of the above, remount, `remount,rw` refused, 15 malformed images refused, module unloaded, no `BUG`/`Oops`/`WARNING`/`KASAN` in `dmesg` | KASAN/lockdep (the Debian kernel has neither); performance |
+
+### Layer suite (`vm/suite.sh`, both harnesses)
+
+| Marker | Printed by | Proves | Does not prove |
+| --- | --- | --- | --- |
+| `LAYER_PASSTHROUGH_TESTS_PASS` | `tests/layer.c`, once per lower filesystem and once more with `nolinks` | Create, write, pread, append, truncate, shared and private mmap, mkdir/rmdir, readdir, chmod, unlink, rename, xattr, hard links and symlinks behave as on the lower tree, with the same inode numbers and bytes visible below; `FICLONE`/`FIDEDUPERANGE` share extents on btrfs and XFS and fail cleanly on ext4 | Full POSIX conformance (xfstests has not been run); other lower filesystems |
+| `QUERY_INVALID_REQUESTS_REFUSED` | `tests/query.c invalid` | Malformed `QUERY` requests (wrong version, too many terms, zero limit, unknown flags, nonzero reserved or pad bytes, invalid name alphabet, unknown operator, operator/type mismatches, wrong value length, invalid UTF-8) return `EINVAL`; an unknown ioctl number and a `QUERY` on a directory other than the mount root return `ENOTTY` | Resistance to inputs the test does not construct (syzkaller has not been run) |
+| `IDMAP_REFUSED_EINVAL` | `tests/idmap.c idmap` | `mount_setattr` with an idmapping on the layer mount is refused with `EINVAL` | Correct behaviour over an idmapped **lower** mount (untested) |
+| `USERNS_MOUNT_REFUSED_EPERM` | `tests/idmap.c userns` | Mounting the layer from an unprivileged user namespace fails with `EPERM` (the filesystem does not set `FS_USERNS_MOUNT`) | Anything about containers that bind-mount an existing layer |
+| `ISOLATION_PASS: <fs>` | `vm/suite.sh` | `QUERY` as uid 1001 and 1002 equals the oracle run as that uid, never reveals the other namespace (not even in counts, including beyond one result chunk), ignores attribute changes as a grant, follows chmod and POSIX ACLs immediately and across remount; identity duplicates are detected by `moobfs-check`; the two mount-contract markers above; a 5-second race of chmod/rename/unlink/directory-rename against `QUERY` yields only well-formed answers and a final answer equal to the oracle | Absence of timing channels; isolation under workloads the race does not produce |
+| `LAYER_LOWER_PASS: <fs> reflink=<yes|no>` | `vm/suite.sh`, once per lower filesystem | Everything in `run_lower` for that filesystem: mount contract (no `lower=`, bad `lower=`, stacking on itself all refused), pass-through tests, typed attribute tools (`moobfs-attr`, `moobfs-check` with a planted invalid encoding), index and `QUERY` equal to `moobfs-index` for ten predicates and after rename, directory rename, unlink, removexattr and remount, `noindex` and `index_budget=1M`, isolation, three `fsx` seeds (9000 operations) with the result compared to the lower copy, `nolinks` remount, clean unmount | Durability (that is the lower filesystem's), performance, behaviour with the budget exhausted on large trees |
+| `SQLITE_RESULT <label>: rows=... integrity=... reads=... missing=[...]` and `SQLITE_VARIANTS: lower=.. alone=.. layer=.. rollback=.. excl=.. again=..` | `vm/suite.sh` | Per-variant counts are printed before any verdict: control on the lower filesystem, WAL alone, WAL with a concurrent reader (twice), rollback journal, `unix-excl` VFS; each exit code is 0 when 200 of 200 rows survive with `integrity_check` ok | Behaviour of SQLite builds or page sizes other than the Debian package in the image |
+| `SQLITE_CONCURRENT_OK` | `vm/suite.sh` | The control, the WAL-alone run and both WAL-with-reader runs kept all rows (this is the regression for the phase 2e data-loss bug) | Other concurrency patterns |
+| `ACCEPTANCE_CLIENTS_PASS` | `vm/suite.sh` | git (three commits, `fsck --strict`, clean status), SQLite as above and the memory-client convention (`remember`) work on the layer over ext4, and `moobfs-check` finds no problem afterwards | The same over btrfs or XFS (acceptance runs over ext4 only) |
+| `POWER_LOSS_REPLAY_PASS: marks mkfs m1 m2 m4 end` | `vm/suite.sh` | With the lower ext4 on `dm-log-writes`, replaying the log to each mark on a zeroed disk, running `e2fsck -fn` and mounting the layer shows every memory synced before the mark whole and later ones absent, with `QUERY` counts matching | Crash consistency without the client's `sync` of the parent directory; other lower filesystems; barriers under real hardware |
+| `IO_ERROR_INJECTION_PASS` | `vm/suite.sh` | With `dm-flakey error_writes` under the lower ext4, write errors reach the caller, nothing crashes, and after the device heals `e2fsck` and `moobfs-check` are clean and the earlier memory is intact | Read-error paths; errors on btrfs or XFS |
+| `MOOBFS_ACCEPTANCE_PASS: ...` | `vm/suite.sh` | The whole acceptance block plus module unload and a clean `dmesg` scan | See the rows above |
+| `MOOBFS_LAYER_PASS: ...` | `vm/suite.sh` | The three `LAYER_LOWER_PASS` lines, acceptance, unload, clean `dmesg` | KASAN/lockdep when printed by the Debian harness |
+
+The binary `tests/ipc.c` (`IPC_PRIMITIVES_PASS`: fcntl locks and shared mmap
+coherence between two processes) is built and staged but is not currently
+invoked by `vm/suite.sh`; it was used during the phase 2e investigation
+(journal 0015).
+
+### KASAN harness (`vm/kasan-guest.sh`)
+
+| Marker | Proves | Does not prove |
+| --- | --- | --- |
+| `MOOBFS_KASAN_PASS: ...` | The full `vm/suite.sh` passed on upstream 6.12.112 with KASAN (generic, inline, vmalloc), UBSAN bounds, `PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`, `DEBUG_LIST`, `DEBUG_VM`, `PROVE_RCU`, and `dmesg` contains none of `BUG: KASAN`, `KASAN:`, `BUG:`, `Oops:`, `WARNING:`, `possible circular/recursive locking`, `INFO: task/rcu`, `UBSAN:` | KMSAN, KCSAN, KFENCE (not enabled); code paths the suite does not reach; other kernel versions |
+| `MOOBFS_VM_FAIL: kernel diagnostics under KASAN/lockdep` | The suite passed but `dmesg` had a diagnostic; `build/vng/dmesg.txt` has it | — |
+| `MOOBFS_VM_FAIL: missing <tool> on the host` / `missing disk /dev/vdX` | Environment error before the suite started | — |
+
+### Failure marker
+
+`MOOBFS_VM_FAIL: <step>` names the failing step as written in the `fail` call
+(for example `query-eq-btrfs`, `iso-leak-1001-xfs`, `lw-check-m2`). Search the
+step name in `vm/suite.sh` to find the exact command. `vm/init` appends the last
+60 lines of `dmesg`; `vm/kasan-guest.sh` appends 80 and saves the full
+`dmesg.txt`.
+
+## 4. Reading the logs
+
+`build/vm/` (Debian harness):
 
 | File | Purpose |
 | --- | --- |
-| `console.log` | Mount/read checks and final PASS/FAIL marker |
-| `image-report.json` | Inodes, shared object, offsets and hashes |
-| `environment.txt` | Kernel, compiler, QEMU, package versions and SHA-256s |
+| `console.log` | The whole guest console; search for `_PASS`, `MOOBFS_VM_FAIL:` and `SQLITE_` |
+| `environment.txt` | Kernel, compiler, QEMU, package versions and SHA-256s of what was booted |
 | `kernel.config` | Exact tested kernel configuration |
-| `shared.img`, `moobfs.ko` | Image and module used for the experiment |
-| `initramfs.cpio.gz` | Test guest filesystem |
+| `image-report.json` | `fsck.moobfs` report of the M1 fixture: inodes, shared object, offsets, hashes |
+| `shared.img`, `moobfs.ko`, `moobfs_layer.ko`, `initramfs.cpio.gz` | Image, modules and guest filesystem used |
 
-Success requires QEMU to exit successfully, a `MOOBFS_VM_PASS:` marker and no
-`MOOBFS_VM_FAIL:` marker. Expected rejection messages for malformed images and
-write attempts are part of the test. Unsigned/out-of-tree module taint is expected.
+`build/vng/` (KASAN): `console.log`, `dmesg.txt`; the kernel configuration is
+`build/linux/.config`. In CI both sets are uploaded as artifacts
+(`native-vm-evidence` for 30 days, `kasan-evidence`).
 
-The current distribution kernel does not enable KASAN or PROVE_LOCKING. Tool
-sanitizers do not replace kernel sanitizers. No performance or durability results
-are implied by these correctness checks.
+Expected noise that is **not** a failure:
 
-## Phases 2a–2b: memory layer stacked over ext4, btrfs and XFS
+- rejection messages for the 15 malformed M1 images and for the `remount,rw`
+  attempt (the test asserts they are rejected);
+- `mount` failures for the three invalid layer mounts at the start of the suite
+  (no `lower=`, nonexistent lower, stacking on itself);
+- the lines `note: a temporary file survived the crash at <mark> (allowed)` and
+  `note: writes were absorbed by the page cache before the device reported errors`;
+- unsigned/out-of-tree module taint messages;
+- `SQLITE_RESULT` lines for `layer-rollback` and `layer-wal-unix-excl` with a
+  nonzero exit code are printed for information; the verdict uses `lower`,
+  `alone`, `layer` and `again` only.
 
-The same `make vm-test` run continues after the M1 checks (see
-[ADR-0007](decisions/0007-stacked-memory-layer.md) and [spec-m2.md](spec-m2.md)):
+A failure is: `MOOBFS_VM_FAIL:`, a missing final marker, QEMU exiting nonzero
+(including the 600-second timeout), or in KASAN any of the `dmesg` patterns
+above.
 
-1. `make layer` builds `layer/moobfs_layer.ko` against the pinned headers.
-2. The container creates sparse ext4 (64 MiB), btrfs (256 MiB) and XFS (300 MiB)
-   images, attached to QEMU as virtio disks, and resolves the module chains for
-   `virtio_blk`, `ext4`, `btrfs` and `xfs` from `modules.dep` (plus `crc32c_generic`,
-   requested through the crypto API).
-3. For each lower filesystem the guest mounts it on `/lower`, then `mount -t
-   moobfs_layer -o lower=/lower none /mnt/layer`, runs the checks below, remounts
-   with `nolinks` and repeats them. Mounting without `lower=`, with a missing
-   directory, or on top of another layer mount must fail.
-4. `tests/layer.c` checks pass-through semantics (create, write, pread, append,
-   truncate, shared and private mmap, mkdir/rmdir, readdir, chmod, unlink, rename,
-   xattr, hard links and symlinks) and that every change is visible in `/lower` with
-   the same inode numbers and bytes. `FICLONE` and `FIDEDUPERANGE` must share
-   extents (visible through `FIEMAP`) on btrfs and XFS and fail cleanly on ext4.
-5. `moobfs-attr` writes typed attributes through the layer and `moobfs-check` validates
-   the lower tree; an invalid encoding planted directly on the lower tree must be
-   reported with its reason (exit code 2).
-6. A six-inode tree with attributes of every indexable type is queried through the
-   `MOOB_IOC_QUERY` ioctl (`tests/query.c`) and through the user-space oracle
-   `moobfs-index` on the lower tree; both outputs must be identical for ten queries,
-   also after renames, unlink, removexattr and a remount. `noindex` and
-   `index_budget=` are exercised, and malformed requests must return `EINVAL`.
-7. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
-   runs three seeds over the layer, and the resulting file is compared with the
-   lower copy.
-8. Acceptance with real clients on the layer over ext4: a git repository (three commits,
-   `fsck --strict`), SQLite in WAL mode with a writer and a reader in concurrent processes
-   (six variants, all must keep 200 of 200 rows), and the memory-client convention. Then a
-   power-loss replay: a fresh ext4 under `dm-log-writes`, memories written with marks,
-   `replay-log` to each mark on a zeroed disk, `e2fsck -fn`, and the check that memories
-   synced before the mark are whole and later ones absent. Finally `dm-flakey` with
-   `error_writes`: errors must propagate, nothing may crash, and the tree must come back
-   clean. Success prints `MOOBFS_ACCEPTANCE_PASS:`.
-9. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
-   close the run. Success prints one `LAYER_LOWER_PASS:` line per lower filesystem
-   and a final `MOOBFS_LAYER_PASS:` marker.
+## 5. Running a single test
 
-The distribution kernel has no KASAN or lockdep. Those run in a separate workflow,
-`.github/workflows/kasan.yml` (on demand with `gh workflow run kasan.yml`, and
-weekly): it downloads the pinned upstream `linux-6.12.112` tarball, verifies its
-SHA-256, lets virtme-ng generate a minimal configuration plus `vm/kasan.config`
-(KASAN, UBSAN, lockdep, the three lower filesystems, device mapper), builds the
-kernel, builds `moobfs_layer.ko` and the test binaries against it, and boots the
-kernel with the host checkout as root and five virtio disks. `vm/kasan-guest.sh`
-runs the same `vm/suite.sh` the initramfs harness uses and fails on any `KASAN`,
-`WARNING`, `BUG`, lockdep or UBSAN report in `dmesg`. Success prints
-`MOOBFS_KASAN_PASS:`; the console, `dmesg` and `.config` are kept as artifacts.
+Not supported yet; `vm/suite.sh` is sequential and stops at the first failure.
+Edit a local copy of the suite to skip steps while debugging, but do not commit
+such edits. A `MOOB_ONLY=<step>` switch is planned (community plan, section 1).
 
-## Manual mount inside your own disposable Linux VM
+## 6. KASAN locally and in CI
 
-Use the tested kernel and matching headers; compile the module in that VM.
-The following commands assume the image from the README has already been created:
+See [development.md](development.md) section 6 for the command-by-command
+reproduction of `.github/workflows/kasan.yml`. The workflow runs automatically
+on pull requests that touch `layer/`, `vm/` or the workflow, weekly on Monday,
+and on demand with `gh workflow run kasan.yml --ref <branch>`. For `layer/` or
+`vm/` changes the PR must link a green run on the final revision.
+
+## 7. Adding a lower filesystem
+
+Each new lower filesystem widens the tested matrix and needs a journal entry; it
+does not widen the project's scope without an ADR. Files to touch:
+
+1. `vm/Dockerfile`: the user-space package (for example `f2fs-tools`).
+2. `vm/in-container.sh`: the module path in the `visit(...)` list so its chain
+   is extracted from `modules.dep`; a sparse image (`truncate` + `mkfs`); one
+   more `-drive ... if=virtio` line.
+3. `vm/init` and `vm/kasan-guest.sh`: a `DEV_<FS>` variable for the new virtio
+   device (the order of `-drive`/`--disk` lines defines `/dev/vdX`).
+4. `vm/suite.sh`: `run_lower <fs> "$DEV_<FS>" <reflink yes|no>` and the header
+   comment.
+5. `vm/kasan.config`: `CONFIG_<FS>=y` (and its ACL option).
+6. `.github/workflows/kasan.yml`: the apt package, the image creation and one
+   more `--disk`.
+7. `docs/testing.md`: this guide and the marker tables; `README.md` matrix.
+
+## 8. Manual mount inside your own disposable Linux VM
+
+Use the tested kernel and matching headers; compile the module in that VM. The
+following assumes the M1 image from the README has been created:
 
 ```sh
 make module KDIR=/lib/modules/$(uname -r)/build
@@ -125,14 +177,28 @@ sudo umount /mnt/moob
 sudo rmmod moobfs
 ```
 
-Do not alter the backing image while mounted. The signed-module policies of a
-particular VM may reject unsigned modules; the provided QEMU harness supplies a
-known test environment. Other kernel versions are unverified.
+For the layer: `make layer`, `insmod layer/moobfs_layer.ko`, then
+`mount -t moobfs_layer -o lower=<dir>[,nolinks][,noindex][,index_budget=<n>] none <mnt>`.
+Do not alter the backing image or the lower tree from outside while mounted.
+Signed-module policies of a particular VM may reject unsigned modules. Other
+kernel versions are unverified.
 
-## CI and documentation
+## 9. What is not covered
 
-GitHub Actions runs portable tests, tool sanitizers and the QEMU test on pushes
-and pull requests. VM logs and metadata are retained as temporary Actions artifacts;
-permanent conclusions belong in the journal, with links to the relevant run.
-The Pages workflow publishes only `site/`, not the entire checkout or test artifacts.
+- xfstests over the layer (only the vendored `fsx`), syzkaller over the ioctls
+  and `setxattr`, a hostile lower tree, KMSAN/KCSAN/KFENCE: see
+  [security-roadmap.md](security-roadmap.md) S2 to S4 and S7 to S8.
+- Kernels other than Debian 6.12.111 and upstream 6.12.112; architectures other
+  than x86-64.
+- Any performance, latency or memory measurement (M4, [benchmark-plan.md](benchmark-plan.md)).
+- Acceptance over btrfs and XFS (it runs over ext4 only); `ipc` in the suite.
+
+## 10. CI and documentation
+
+GitHub Actions runs `Tools and sanitizers` (host tests, ASan/UBSan, 30 s of
+fuzzing, site link check), `Lint` (shellcheck, SPDX headers, DCO sign-off on
+pull requests) and `Native Linux VM` on pushes to `main` and on pull requests;
+`KASAN and lockdep` runs on pull requests touching `layer/` or `vm/`, weekly and
+on demand. Logs are temporary Actions artifacts; permanent conclusions belong
+in the journal with links to the run. The Pages workflow publishes only `site/`.
 Preview locally with `python3 -m http.server 8080 --directory site`.
