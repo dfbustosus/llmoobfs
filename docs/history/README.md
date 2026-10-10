@@ -28,3 +28,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0008 — Infraestrutura do kernel reutilizável e especificação do M2 com escrita POSIX](0008-m2-spec-kernel-infra.md)
 - [0009 — O que o MoobFS traria de diferente, e o princípio de não concorrer com o maduro](0009-differentiation-and-principle.md)
 - [0010 — ADR-0007: camada empilhada sobre filesystem maduro; M2 reescrito](0010-adr-0007-stacked-layer.md)
+- [0011 — Fase 2a: camada empilhada mínima sobre ext4, validada em VM](0011-phase-2a-stacked-passthrough.md)

@@ -34,4 +34,31 @@ done
 rmmod moobfs || fail unload
 if dmesg | grep -E 'BUG:|Oops:|WARNING:|Kernel panic|KASAN:'; then fail kernel-diagnostic; fi
 echo "MOOBFS_VM_PASS: shared extents, independent inodes, reads, readonly, remount, 15 malformed images"
+
+# Phase 2a: memory layer stacked over ext4.
+for m in $(cat /mods/order); do insmod "/mods/$m" || fail "lower module $m"; done
+mkdir -p /lower /mnt/layer
+mount -t ext4 -o loop /data/lower.img /lower || fail lower-mount
+insmod /moobfs_layer.ko || fail layer-module
+mount -t moobfs_layer none /mnt/layer && fail layer-mount-without-lower
+mount -t moobfs_layer -o lower=/nonexistent none /mnt/layer && fail layer-mount-bad-lower
+mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail layer-mount
+grep -q 'moobfs_layer' /proc/mounts || fail layer-proc-mounts
+mount -t moobfs_layer -o lower=/mnt/layer none /mnt && fail layer-stack-on-itself
+/layer /mnt/layer /lower || fail layer-tests
+mkdir -p /mnt/layer/fsx
+/fsx -q -N 10000 -S 1 /mnt/layer/fsx/file1 || fail fsx-1
+/fsx -q -N 10000 -S 2 -r 512 -w 512 /mnt/layer/fsx/file2 || fail fsx-2
+/fsx -q -N 3000 -S 3 -l 2000000 /mnt/layer/fsx/file3 || fail fsx-large
+cmp /mnt/layer/fsx/file1 /lower/fsx/file1 || fail fsx-lower-mismatch
+rm -rf /mnt/layer/fsx || fail layer-cleanup
+sync
+umount /mnt/layer || fail layer-unmount
+mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail layer-remount
+[ "$(ls -A /mnt/layer | wc -l)" -eq 1 ] || fail layer-remount-content
+umount /mnt/layer || fail layer-second-unmount
+rmmod moobfs_layer || fail layer-unload
+umount /lower || fail lower-unmount
+if dmesg | grep -E 'BUG:|Oops:|WARNING:|Kernel panic|KASAN:'; then fail kernel-diagnostic-layer; fi
+echo "MOOBFS_LAYER_PASS: pass-through over ext4, layer tests, fsx 23000 ops, remount, unload"
 poweroff -f

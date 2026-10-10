@@ -49,6 +49,31 @@ The current distribution kernel does not enable KASAN or PROVE_LOCKING. Tool
 sanitizers do not replace kernel sanitizers. No performance or durability results
 are implied by these correctness checks.
 
+## Phase 2a: memory layer stacked over ext4
+
+The same `make vm-test` run continues after the M1 checks (see
+[ADR-0007](decisions/0007-stacked-memory-layer.md) and [spec-m2.md](spec-m2.md)):
+
+1. `make layer` builds `layer/moobfs_layer.ko` against the pinned headers.
+2. The container creates a 64 MiB ext4 image with `mke2fs` and resolves the
+   `ext4.ko` module chain from `modules.dep`, decompressing each module into the
+   guest.
+3. The guest mounts ext4 on `/lower`, then `mount -t moobfs_layer -o lower=/lower
+   none /mnt/layer`. Mounting without `lower=`, with a missing directory, or on top
+   of another layer mount must fail.
+4. `tests/layer.c` checks pass-through semantics (create, write, pread, append,
+   truncate, shared and private mmap, mkdir/rmdir, readdir, chmod, unlink) and that
+   every change is visible in `/lower` with the same inode numbers and bytes.
+   Links and renames must return `EPERM` in this phase.
+5. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
+   runs three seeds over the layer, and the resulting file is compared with the
+   lower copy.
+6. Unmount, remount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or
+   `KASAN` close the run. Success adds a `MOOBFS_LAYER_PASS:` marker.
+
+The distribution kernel still has no KASAN or lockdep; those runs belong to a
+separate virtme-ng kernel and are not implied by this harness.
+
 ## Manual mount inside your own disposable Linux VM
 
 Use the tested kernel and matching headers; compile the module in that VM.

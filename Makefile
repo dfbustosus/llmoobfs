@@ -6,7 +6,7 @@ HEADERS = include/moobfs_format.h
 KDIR ?= /lib/modules/$(shell uname -r)/build
 BUILD ?= build/host
 
-.PHONY: all tools test module vm-test
+.PHONY: all tools test module layer vm-test
 all: tools
 tools: $(BUILD)/mkfs.moobfs $(BUILD)/fsck.moobfs
 $(BUILD):
@@ -19,5 +19,7 @@ test: tools
 	MOOB_BUILD_DIR=$(BUILD) python3 tests/test_images.py
 module:
 	$(MAKE) -C $(KDIR) M=$(CURDIR)/kernel modules
+layer:
+	$(MAKE) -C $(KDIR) M=$(CURDIR)/layer modules
 vm-test:
 	sh vm/run.sh

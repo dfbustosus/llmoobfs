@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-10-10
 
+- Phase 2a of the memory layer: `layer/moobfs_layer.ko`, a native stacked pass-through
+  filesystem over a lower directory, validated in the QEMU VM over ext4 with the pass-through
+  acceptance test and 23,000 `fsx` operations (vendored from xfstests).
 - ADR-0007 supersedes ADR-0006: MoobFS becomes a native stacked memory layer over a mature
   filesystem; `docs/spec-m2.md` rewritten accordingly, previous version preserved. Proposal only.
 - Journal 0009: differentiation analysis and the "build on mature software, innovate only in
