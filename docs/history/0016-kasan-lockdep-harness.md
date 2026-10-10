@@ -34,6 +34,19 @@ do fluxo do dado) e a pendência mais pesada do M2, validação com KASAN e lock
   de `backing_file_open`); o módulo é compilado contra os cabeçalhos de cada kernel, então
   ambos são alvos de teste legítimos. Divergências de API entre os dois serão registradas.
 
-## Evidências
+## Evidências e correções
 
-Primeiro run: `gh workflow run kasan.yml` → run 38071014790. Resultado anexado abaixo.
+- Run 38071014790: kernel 6.12.112 com KASAN compilou em cerca de dez minutos no runner,
+  iniciou, os cinco discos virtio apareceram e o módulo carregou. Falha de harness: a raiz do
+  guest do virtme-ng é somente leitura e a suíte criava `/lower` e `/mnt/layer`. Correção:
+  pontos de montagem parametrizados (`LOWER`, `LAYER`), em tmpfs no guest.
+- Run 38072014663: KASAN e lockdep ativos (35 linhas em `/proc/lockdep_stats`). **Defeito
+  real encontrado**: `DEBUG_RWSEMS_WARN_ON(sem->magic != sem)` em `up_write`, vindo de
+  `moobl_index_destroy` chamado por `moobl_kill_sb` em montagens que falharam antes de
+  `moobl_index_init` (sem `lower=`, diretório inexistente, empilhar sobre a própria camada).
+  O rwsem e o xarray eram destruídos sem terem sido inicializados; o kernel Debian, sem
+  `DEBUG_RWSEMS`, não acusava. Correção: inicializar o índice logo após alocar o superbloco,
+  antes de qualquer caminho de erro, e `moobl_index_destroy` só agir se inicializado.
+  Segunda falha, de harness: a parametrização não cobria opções com vírgula
+  (`lower=/lower,noindex`), corrigido.
+- Próximo run anexado abaixo.

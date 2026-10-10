@@ -508,6 +508,7 @@ void moobl_index_init(struct super_block *sb, u64 budget, bool enabled)
 	xa_init(&ix->inodes);
 	ix->budget = budget;
 	ix->enabled = enabled;
+	ix->initialized = true;
 }
 
 void moobl_index_destroy(struct super_block *sb)
@@ -516,6 +517,8 @@ void moobl_index_destroy(struct super_block *sb)
 	struct moobl_ix_inode *rec;
 	unsigned long ino;
 
+	if (!ix->initialized)
+		return;	/* fill_super failed before the index existed */
 	down_write(&ix->lock);
 	xa_for_each(&ix->inodes, ino, rec) {
 		struct moobl_ix_entry *e, *tmp;

@@ -23,6 +23,7 @@ struct moobl_index {
 	bool paths_stale;		/* a directory was renamed since the scan */
 	bool xattr_ok;			/* lower root answered listxattr */
 	bool incomplete;		/* an index update failed after a lower write */
+	bool initialized;		/* moobl_index_init() ran for this superblock */
 };
 
 struct moobl_sb {

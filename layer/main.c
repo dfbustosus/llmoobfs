@@ -1073,6 +1073,9 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (!sbi)
 		return -ENOMEM;
 	sb->s_fs_info = sbi;
+	/* Initialize the index state first: kill_sb tears it down on every failure path. */
+	moobl_index_init(sb, ctx->index_budget ? ctx->index_budget : MOOBL_INDEX_BUDGET_DEFAULT,
+			 !ctx->noindex);
 	err = kern_path(ctx->lower, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &sbi->lower);
 	if (err)
 		return invalfc(fc, "cannot resolve lower directory");
@@ -1085,8 +1088,6 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (!sbi->creds)
 		return -ENOMEM;
 	sbi->nolinks = ctx->nolinks;
-	moobl_index_init(sb, ctx->index_budget ? ctx->index_budget : MOOBL_INDEX_BUDGET_DEFAULT,
-			 !ctx->noindex);
 	sb->s_xattr = moobl_xattr_handlers;
 	{
 		/* Refuse a lower tree written by a newer encoding; absence is fine. */
