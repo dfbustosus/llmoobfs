@@ -108,3 +108,14 @@ Correção: `moobl_get_acl`/`moobl_set_acl` delegando a `vfs_get_acl`/`vfs_set_a
 `vfs_remove_acl` no dentry inferior, como o ecryptfs, e `SB_POSIXACL` herdada do inferior. A
 decisão de autorização continua delegada ao inferior; só a escrita e a leitura de ACLs pela
 camada passaram a funcionar.
+
+## Evidência final da fase na VM (2026-10-10)
+
+`make vm-test` sobre a branch `m3/3b-query-authz` (commit `fb8f9a1`, kernel Debian 6.12.111),
+depois do handshake no teste de user namespace: `ISOLATION_PASS` em ext4, btrfs e XFS, cada um
+precedido de `IDMAP_REFUSED_EINVAL` e `USERNS_MOUNT_REFUSED_EPERM`; os testes de ACL (bits
+negam e ACL concede, bits concedem e ACL nega, travessia por ACL, ACL alterada depois do índice)
+e de identidade (`moobfs-check` com duplicata em inode distinto, hard link aceito, mesmo id em
+outro namespace aceito) passaram dentro do mesmo bloco; `MOOBFS_ACCEPTANCE_PASS` e
+`MOOBFS_LAYER_PASS` sem avisos de kernel. Ficam pendentes KASAN sobre a branch e o merge em
+`main` por pull request.
