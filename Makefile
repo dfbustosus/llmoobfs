@@ -18,11 +18,13 @@ $(BUILD)/fsck.moobfs: tools/fsck.c $(COMMON) $(HEADERS) | $(BUILD)
 $(BUILD)/attr_test: tests/attr_test.c common/attr.c include/moobfs_attr.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tests/attr_test.c common/attr.c $(LDFLAGS) -o $@
 # Linux-only tools over the xattr API (built statically inside the VM container too).
-attr-tools: $(BUILD)/moobfs-attr $(BUILD)/moobfs-check
+attr-tools: $(BUILD)/moobfs-attr $(BUILD)/moobfs-check $(BUILD)/moobfs-index
 $(BUILD)/moobfs-attr: tools/moobfs-attr.c common/attr.c include/moobfs_attr.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tools/moobfs-attr.c common/attr.c $(LDFLAGS) -o $@
 $(BUILD)/moobfs-check: tools/moobfs-check.c common/attr.c include/moobfs_attr.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tools/moobfs-check.c common/attr.c $(LDFLAGS) -o $@
+$(BUILD)/moobfs-index: tools/moobfs-index.c tools/query-common.h common/attr.c include/moobfs_attr.h include/moobfs_ioctl.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tools/moobfs-index.c common/attr.c $(LDFLAGS) -o $@
 test: tools
 	$(BUILD)/attr_test
 	MOOB_BUILD_DIR=$(BUILD) python3 tests/test_images.py

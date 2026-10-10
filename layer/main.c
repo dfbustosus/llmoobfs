@@ -31,51 +31,10 @@
 #include <linux/fiemap.h>
 #include "moobfs_attr.h"
 
-#define MOOBL_SUPER_MAGIC 0x4d4f4f42	/* "MOOB" */
-#define MOOBL_NAME "moobfs_layer"
-
-struct moobl_sb {
-	struct path lower;		/* lower root */
-	const struct cred *creds;	/* mounter credentials for backing I/O */
-	bool nolinks;			/* refuse link and symlink creation */
-};
-
-struct moobl_inode {
-	struct inode vfs_inode;
-	struct inode *lower;
-};
-
-struct moobl_dentry {
-	struct path lower;
-	struct rcu_head rcu;
-};
+#include "moobl.h"
+#include "moobfs_ioctl.h"
 
 static struct kmem_cache *moobl_inode_cache;
-
-static inline struct moobl_sb *MOOBL_SB(struct super_block *sb)
-{
-	return sb->s_fs_info;
-}
-
-static inline struct moobl_inode *MOOBL_I(struct inode *inode)
-{
-	return container_of(inode, struct moobl_inode, vfs_inode);
-}
-
-static inline struct inode *moobl_lower_inode(struct inode *inode)
-{
-	return MOOBL_I(inode)->lower;
-}
-
-static inline struct path *moobl_lower_path(struct dentry *dentry)
-{
-	return &((struct moobl_dentry *)dentry->d_fsdata)->lower;
-}
-
-static inline struct dentry *moobl_lower_dentry(struct dentry *dentry)
-{
-	return moobl_lower_path(dentry)->dentry;
-}
 
 static int moobl_set_lower_path(struct dentry *dentry, struct vfsmount *mnt,
 				struct dentry *lower_dentry)
@@ -147,10 +106,12 @@ static struct inode *moobl_get_inode(struct super_block *sb, struct inode *lower
 		iput(lower);
 		return ERR_PTR(-ENOMEM);
 	}
-	if (!(inode->i_state & I_NEW))
+	if (!(inode->i_state & I_NEW)) {
 		iput(lower);	/* existing upper inode already holds its reference */
-	else
+	} else {
 		unlock_new_inode(inode);
+		moobl_index_inode_cached(sb, inode);
+	}
 	return inode;
 }
 
@@ -173,8 +134,10 @@ static void moobl_evict_inode(struct inode *inode)
 {
 	truncate_inode_pages_final(&inode->i_data);
 	clear_inode(inode);
-	if (moobl_lower_inode(inode))
+	if (moobl_lower_inode(inode)) {
+		moobl_index_inode_evicted(inode->i_sb, inode);
 		iput(moobl_lower_inode(inode));
+	}
 }
 
 static int moobl_statfs(struct dentry *dentry, struct kstatfs *buf)
@@ -192,6 +155,10 @@ static int moobl_show_options(struct seq_file *m, struct dentry *root)
 	seq_path(m, &MOOBL_SB(root->d_sb)->lower, " \t\n\\,");
 	if (MOOBL_SB(root->d_sb)->nolinks)
 		seq_puts(m, ",nolinks");
+	if (!MOOBL_SB(root->d_sb)->index.enabled)
+		seq_puts(m, ",noindex");
+	else if (MOOBL_SB(root->d_sb)->index.budget != MOOBL_INDEX_BUDGET_DEFAULT)
+		seq_printf(m, ",index_budget=%llu", MOOBL_SB(root->d_sb)->index.budget);
 	return 0;
 }
 
@@ -378,6 +345,8 @@ static int moobl_unlink(struct inode *dir, struct dentry *dentry)
 	}
 	dput(lower_dentry);
 	moobl_unlock_parent(lower_dentry, lower_dir);
+	if (!err && !inode->i_nlink)
+		moobl_index_drop_inode(dir->i_sb, inode->i_ino);
 	return err;
 }
 
@@ -402,8 +371,10 @@ static int moobl_rmdir(struct inode *dir, struct dentry *dentry)
 	}
 	dput(lower_dentry);
 	moobl_unlock_parent(lower_dentry, lower_dir);
-	if (!err)
+	if (!err) {
+		moobl_index_drop_inode(dir->i_sb, d_inode(dentry)->i_ino);
 		d_drop(dentry);
+	}
 	return err;
 }
 
@@ -454,6 +425,9 @@ static int moobl_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 	if ((flags & RENAME_EXCHANGE) && target)
 		fsstack_copy_attr_all(d_inode(old_dentry),
 				      moobl_lower_inode(d_inode(old_dentry)));
+	moobl_index_renamed(old_dir->i_sb, old_dentry);
+	if ((flags & RENAME_EXCHANGE) && target)
+		moobl_index_renamed(old_dir->i_sb, new_dentry);
 out_unlock:
 	unlock_rename(lower_old_dir, lower_new_dir);
 out_put:
@@ -613,7 +587,9 @@ static int moobl_xattr_set(const struct xattr_handler *handler, struct mnt_idmap
 	const char *full = xattr_full_name(handler, name);
 	int err;
 
-	if (!strncmp(full, MOOB_ATTR_PREFIX, MOOB_ATTR_PREFIX_LEN)) {
+	bool typed = !strncmp(full, MOOB_ATTR_PREFIX, MOOB_ATTR_PREFIX_LEN);
+
+	if (typed) {
 		err = moobl_typed_check(lower, full, value, size);
 		if (err)
 			return err;
@@ -622,9 +598,16 @@ static int moobl_xattr_set(const struct xattr_handler *handler, struct mnt_idmap
 		err = vfs_setxattr(&nop_mnt_idmap, lower, full, value, size, flags);
 	else
 		err = vfs_removexattr(&nop_mnt_idmap, lower, full);
-	if (!err)
-		fsstack_copy_attr_all(inode, d_inode(lower));
-	return err;
+	if (err)
+		return err;
+	fsstack_copy_attr_all(inode, d_inode(lower));
+	if (typed) {
+		if (value)
+			moobl_index_set(inode->i_sb, dentry, full + MOOB_ATTR_PREFIX_LEN, value, size);
+		else
+			moobl_index_remove(inode->i_sb, inode->i_ino, full + MOOB_ATTR_PREFIX_LEN);
+	}
+	return 0;
 }
 
 static const struct xattr_handler moobl_xattr_handler = {
@@ -991,6 +974,8 @@ static const struct file_operations moobl_dir_fops = {
 	.llseek = moobl_dir_llseek,
 	.read = generic_read_dir,
 	.fsync = moobl_fsync,
+	.unlocked_ioctl = moobl_root_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
 };
 
 /* ---- mount ------------------------------------------------------------- */
@@ -998,13 +983,17 @@ static const struct file_operations moobl_dir_fops = {
 struct moobl_fc {
 	char *lower;
 	bool nolinks;
+	bool noindex;
+	u64 index_budget;
 };
 
-enum { Opt_lower, Opt_nolinks };
+enum { Opt_lower, Opt_nolinks, Opt_noindex, Opt_index_budget };
 
 static const struct fs_parameter_spec moobl_params[] = {
 	fsparam_string("lower", Opt_lower),
 	fsparam_flag("nolinks", Opt_nolinks),
+	fsparam_flag("noindex", Opt_noindex),
+	fsparam_string("index_budget", Opt_index_budget),
 	{}
 };
 
@@ -1025,6 +1014,18 @@ static int moobl_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	case Opt_nolinks:
 		ctx->nolinks = true;
 		break;
+	case Opt_noindex:
+		ctx->noindex = true;
+		break;
+	case Opt_index_budget: {
+		char *end;
+		u64 v = memparse(param->string, &end);
+
+		if (*end || v < (1ULL << 20) || v > (4ULL << 30))
+			return invalfc(fc, "index_budget must be between 1M and 4G");
+		ctx->index_budget = v;
+		break;
+	}
 	}
 	return 0;
 }
@@ -1055,6 +1056,8 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (!sbi->creds)
 		return -ENOMEM;
 	sbi->nolinks = ctx->nolinks;
+	moobl_index_init(sb, ctx->index_budget ? ctx->index_budget : MOOBL_INDEX_BUDGET_DEFAULT,
+			 !ctx->noindex);
 	sb->s_xattr = moobl_xattr_handlers;
 	{
 		/* Refuse a lower tree written by a newer encoding; absence is fine. */
@@ -1093,7 +1096,7 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	err = moobl_set_lower_path(root, sbi->lower.mnt, dget(sbi->lower.dentry));
 	if (err)
 		return err;
-	return 0;
+	return moobl_index_build(sb);
 }
 
 static int moobl_get_tree(struct fs_context *fc)
@@ -1134,6 +1137,7 @@ static void moobl_kill_sb(struct super_block *sb)
 
 	kill_anon_super(sb);
 	if (sbi) {
+		moobl_index_destroy(sb);
 		if (sbi->creds)
 			put_cred(sbi->creds);
 		path_put(&sbi->lower);

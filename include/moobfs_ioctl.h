@@ -1,0 +1,100 @@
+/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
+/*
+ * MoobFS layer ioctl interface (UAPI version 1). Issued on an open descriptor
+ * of the mount root directory. Unknown commands return ENOTTY; a request with
+ * reserved fields set, an unknown version or an invalid term returns EINVAL.
+ * Layout uses fixed-width little-endian fields and explicit padding; the same
+ * header is compiled by the module and by the user-space tools.
+ */
+#ifndef MOOBFS_IOCTL_H
+#define MOOBFS_IOCTL_H
+#ifdef __KERNEL__
+#include <linux/types.h>
+#include <linux/ioctl.h>
+#else
+#include <linux/types.h>
+#include <sys/ioctl.h>
+#endif
+
+#define MOOB_IOC_MAGIC 'M'
+#define MOOB_UAPI_VERSION 1U
+
+/* Query operators. PREFIX applies to strings only; EXISTS ignores the value. */
+enum moob_query_op {
+	MOOB_OP_EQ = 1,
+	MOOB_OP_LT = 2,
+	MOOB_OP_LE = 3,
+	MOOB_OP_GT = 4,
+	MOOB_OP_GE = 5,
+	MOOB_OP_PREFIX = 6,
+	MOOB_OP_EXISTS = 7,
+};
+
+#define MOOB_QUERY_MAX_TERMS 4U
+#define MOOB_QUERY_NAME_MAX 64U
+#define MOOB_QUERY_VALUE_MAX 1024U
+#define MOOB_QUERY_PATH_MAX 256U
+#define MOOB_QUERY_MAX_LIMIT 4096U
+
+struct moob_query_term {
+	char name[MOOB_QUERY_NAME_MAX + 1];	/* NUL-terminated, without "user.moob." */
+	__u8 op;				/* enum moob_query_op */
+	__u8 type;				/* enum moob_attr_type of the value */
+	__u8 reserved[1];
+	__u16 len;				/* payload bytes in value[] */
+	__u8 value[MOOB_QUERY_VALUE_MAX];	/* payload without the type byte */
+	__u8 pad[3];
+};
+
+/* One result per matching inode. path is relative to the mount root; empty when unknown. */
+struct moob_query_result {
+	__u64 ino;
+	__u32 flags;				/* MOOB_RES_* */
+	__u32 path_len;				/* bytes of path actually stored */
+	char path[MOOB_QUERY_PATH_MAX];
+};
+#define MOOB_RES_PATH_UNKNOWN 0x1U		/* no cached name for this inode */
+#define MOOB_RES_PATH_TRUNCATED 0x2U
+
+struct moob_query {
+	__u32 version;				/* MOOB_UAPI_VERSION */
+	__u32 nterms;				/* 1..MOOB_QUERY_MAX_TERMS */
+	__u32 limit;				/* max results to copy, 1..MOOB_QUERY_MAX_LIMIT */
+	__u32 flags;				/* must be 0 */
+	__u64 results;				/* user pointer to struct moob_query_result[limit] */
+	__u32 count;				/* out: results written */
+	__u32 truncated;			/* out: 1 if more matches existed */
+	__u64 reserved[2];			/* must be 0 */
+	struct moob_query_term terms[MOOB_QUERY_MAX_TERMS];
+};
+
+#define MOOB_CAP_REFLINK 0x1U
+#define MOOB_CAP_DATA_CHECKSUMS 0x2U
+#define MOOB_CAP_SNAPSHOTS 0x4U
+#define MOOB_CAP_XATTR 0x8U
+#define MOOB_FLAG_NOLINKS 0x1U
+#define MOOB_FLAG_INDEX_OFF 0x2U
+#define MOOB_FLAG_PATHS_STALE 0x4U
+#define MOOB_FLAG_INDEX_INCOMPLETE 0x8U
+
+struct moob_info {
+	__u32 uapi_version;
+	__u32 format_version;			/* attribute encoding version supported */
+	__u32 attr_name_max;
+	__u32 attr_string_max;
+	__u32 attr_raw_max;
+	__u32 attr_max_per_file;
+	__u32 caps;				/* MOOB_CAP_*, advertised from the lower fs type */
+	__u32 flags;				/* MOOB_FLAG_* */
+	__u64 index_budget;			/* bytes */
+	__u64 index_used;			/* bytes accounted to the index */
+	__u32 index_entries;			/* typed attribute entries indexed */
+	__u32 index_inodes;			/* inodes with at least one typed attribute */
+	char lower_fs[16];			/* lower filesystem type name */
+	__u64 reserved[4];
+};
+
+#define MOOB_IOC_QUERY _IOWR(MOOB_IOC_MAGIC, 1, struct moob_query)
+#define MOOB_IOC_GET_INFO _IOR(MOOB_IOC_MAGIC, 2, struct moob_info)
+
+#endif

@@ -77,10 +77,15 @@ The same `make vm-test` run continues after the M1 checks (see
 5. `moobfs-attr` writes typed attributes through the layer and `moobfs-check` validates
    the lower tree; an invalid encoding planted directly on the lower tree must be
    reported with its reason (exit code 2).
-6. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
+6. A six-inode tree with attributes of every indexable type is queried through the
+   `MOOB_IOC_QUERY` ioctl (`tests/query.c`) and through the user-space oracle
+   `moobfs-index` on the lower tree; both outputs must be identical for ten queries,
+   also after renames, unlink, removexattr and a remount. `noindex` and
+   `index_budget=` are exercised, and malformed requests must return `EINVAL`.
+7. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
    runs three seeds over the layer, and the resulting file is compared with the
    lower copy.
-7. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
+8. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
    close the run. Success prints one `LAYER_LOWER_PASS:` line per lower filesystem
    and a final `MOOBFS_LAYER_PASS:` marker.
 

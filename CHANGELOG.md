@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-10-10
 
+- Phase 2d: in-memory attribute index built at mount and kept current on writes; `QUERY` and
+  `GET_INFO` ioctls on the mount root (UAPI v1); `moobfs-index` user-space oracle; kernel answers
+  verified identical to the oracle over ext4, btrfs and XFS.
 - Phase 2c: typed `user.moob.*` attributes validated in the kernel (shared encoding in
   `common/attr.c`), `moobfs-attr` and `moobfs-check` tools, host unit tests and a libFuzzer target.
 - Phase 2b: rename, links, symlinks (`nolinks` option), opaque xattr pass-through, delegated

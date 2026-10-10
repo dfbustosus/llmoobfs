@@ -65,7 +65,8 @@ PY
 gcc -static -O2 -Wall -Wextra -Werror tests/mounted.c -o "$STAGE/mounted"
 gcc -static -O2 -Wall -Wextra -Werror tests/layer.c -o "$STAGE/layer"
 make attr-tools BUILD=build/linux CFLAGS="-O2 -g -static"
-cp build/linux/moobfs-attr build/linux/moobfs-check "$STAGE/"
+cp build/linux/moobfs-attr build/linux/moobfs-check build/linux/moobfs-index "$STAGE/"
+gcc -static -O2 -Wall -Wextra -Werror -Iinclude tests/query.c common/attr.c -o "$STAGE/query"
 gcc -static -O2 -Itests/third_party/fsx tests/third_party/fsx/fsx.c -o "$STAGE/fsx"
 MOOB_BUILD_DIR=build/linux python3 tests/test_images.py --fixtures "$STAGE/data"
 build/linux/fsck.moobfs "$STAGE/data/shared.img" > build/vm/image-report.json

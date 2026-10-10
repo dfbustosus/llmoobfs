@@ -31,3 +31,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0011 — Fase 2a: camada empilhada mínima sobre ext4, validada em VM](0011-phase-2a-stacked-passthrough.md)
 - [0012 — Fase 2b: passagem completa sobre ext4, btrfs e XFS, com reflink delegado](0012-phase-2b-full-passthrough.md)
 - [0013 — Fase 2c: atributos tipados validados no kernel, ferramentas e fuzzing](0013-phase-2c-typed-attributes.md)
+- [0014 — Fase 2d: índice em memória e consulta por atributo (`QUERY`)](0014-phase-2d-index-query.md)
