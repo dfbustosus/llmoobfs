@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-10-10
 
+- Site: interactive plan page (`site/plan.html`) showing inputs, processing and outputs per milestone.
 - `docs/ecosystem.md`: survey of free software relevant to testing, crash consistency,
   kernel data structures, BFS tooling and agent memory layers.
 - ADR-0005: agent memory model (typed attributes, kernel-side attribute indexes,

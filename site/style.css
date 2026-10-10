@@ -99,3 +99,28 @@ footer p { margin: 0; }
   .guide table { font-size: 12px; table-layout: fixed; }
   .guide td { overflow-wrap: anywhere; }
 }
+
+.plan .milestones { display: flex; flex-wrap: wrap; gap: .6rem; margin: 2rem 0 1.5rem; }
+.plan .milestones button { font: inherit; font-size: 13px; padding: .55rem .9rem; border: 1px solid var(--line); background: white; color: var(--ink); cursor: pointer; }
+.plan .milestones button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); font-weight: bold; }
+.plan .milestones button:focus-visible, .plan .box:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.plan .flow { display: grid; grid-template-columns: 1fr auto 1.15fr auto 1fr; gap: .8rem; align-items: start; }
+.plan .column h2 { font-size: 15px; margin: 0 0 .8rem; letter-spacing: 0; color: var(--muted); }
+.plan .flow-arrow { color: var(--line); font-size: 28px; padding-top: 2.6rem; }
+.plan .box { display: block; width: 100%; text-align: left; font: inherit; font-size: 14px; line-height: 1.4; padding: .7rem .85rem; margin: 0 0 .6rem; border: 1px solid var(--line); background: white; color: var(--ink); cursor: pointer; }
+.plan .box span { display: block; font-size: 12px; color: var(--muted); margin-top: .15rem; }
+.plan .box:hover { border-color: var(--ink); }
+.plan .box.done { background: oklch(.95 .04 160); border-color: oklch(.5 .12 160); }
+.plan .box.done span { color: oklch(.38 .09 160); }
+.plan .box.dim { opacity: .3; }
+.plan .box.selected { border: 2px solid var(--primary); padding: calc(.7rem - 1px) calc(.85rem - 1px); }
+.plan .legend { font-size: 13px; color: var(--muted); margin: .5rem 0 0; }
+.plan .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--line); vertical-align: -1px; margin: 0 .35rem 0 1rem; }
+.plan .swatch:first-child { margin-left: 0; }
+.plan .swatch.done { background: oklch(.95 .04 160); border-color: oklch(.5 .12 160); }
+.plan .detail { background: var(--surface); padding: 1.1rem 1.4rem; margin-top: 1.5rem; min-height: 4.5rem; font-size: 15px; }
+.plan .detail p { margin: .4rem 0 0; max-width: none; }
+@media (max-width: 800px) {
+  .plan .flow { grid-template-columns: 1fr; }
+  .plan .flow-arrow { padding: 0; text-align: center; transform: rotate(90deg); line-height: 1; }
+}

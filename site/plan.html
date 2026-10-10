@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Plan — MoobFS</title><meta name="description" content="Interactive plan of MoobFS: inputs from LLM agents, processing in the native Linux module and outputs for context assembly, milestone by milestone."><meta name="theme-color" content="white"><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"></head><body><a class="skip" href="#main">Skip to content</a><header><div class="wrap"><a class="brand" href="index.html"><svg viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M3 8h10v8h9M3 28h10v-8h9" stroke="currentColor" stroke-width="3"/><rect x="22" y="12" width="11" height="12" fill="currentColor"/></svg>MoobFS</a><nav aria-label="Main"><a href="guide.html">Documentation</a><a href="plan.html" aria-current="page">Plan</a><a href="index.html#roadmap">Roadmap</a><a href="https://github.com/studiomoob/llmoobfs">GitHub ↗</a><a href="https://github.com/studiomoob/llmoobfs/blob/main/README.pt-BR.md" lang="pt-BR">Português</a></nav></div></header><main id="main" class="wrap guide plan"><p class="kicker">Plan · Inputs, processing, outputs</p><h1>Where we are going, one milestone at a time.</h1><p class="lead">An agent produces memories, a CLI publishes them with typed attributes, the kernel module deduplicates, indexes and versions them, and any program reads them back as ordinary files. Pick a milestone to see which parts exist at that point.</p><p>Green boxes are validated in an isolated Linux VM. Everything else is proposed in <a href="https://github.com/studiomoob/llmoobfs/blob/main/docs/decisions/0005-memory-model-bfs-reference.md">ADR-0005</a> and the <a href="https://github.com/studiomoob/llmoobfs/blob/main/ROADMAP.md">roadmap</a>; none of it is implemented or measured.</p>
+<div class="milestones" role="group" aria-label="Show parts up to milestone"><button type="button" data-m="1">M1 · Shared reads</button><button type="button" data-m="2">M2 · Writes and indexes</button><button type="button" data-m="3">M3 · Revisions and snapshots</button><button type="button" data-m="4" aria-pressed="true">M4 · Agent experiment</button></div>
+<div class="flow">
+<section class="column" aria-labelledby="in-title"><h2 id="in-title">Input</h2>
+<button type="button" class="box" data-m="4" data-k="agent">LLM agent produces a memory<span>observation, decision, task record</span></button>
+<button type="button" class="box" data-m="2" data-k="put">CLI sends PUT<span>content + attributes + request_id</span></button>
+<button type="button" class="box done" data-m="1" data-k="mkfs">Image created offline<span>mkfs.moobfs</span></button>
+</section>
+<div class="flow-arrow" aria-hidden="true">→</div>
+<section class="column" aria-labelledby="proc-title"><h2 id="proc-title">Processing · moobfs.ko</h2>
+<button type="button" class="box done" data-m="1" data-k="val">Image validation<span>bounds, CRC32C, SHA-256</span></button>
+<button type="button" class="box done" data-m="1" data-k="dedup">Identical bytes stored once<span>distinct inodes, one payload</span></button>
+<button type="button" class="box" data-m="2" data-k="txn">Transaction with journal<span>idempotent, recovers after power loss</span></button>
+<button type="button" class="box" data-m="2" data-k="idx">Attribute indexes<span>equality and range</span></button>
+<button type="button" class="box" data-m="3" data-k="rev">Revisions and snapshots<span>stable identities, garbage collection</span></button>
+</section>
+<div class="flow-arrow" aria-hidden="true">→</div>
+<section class="column" aria-labelledby="out-title"><h2 id="out-title">Output</h2>
+<button type="button" class="box done" data-m="1" data-k="read">Mounted files<span>read through the VFS, FIEMAP</span></button>
+<button type="button" class="box" data-m="2" data-k="xattr">Attributes via xattr<span>user.moob.*</span></button>
+<button type="button" class="box" data-m="2" data-k="query">QUERY on .control<span>returns (memory, revision) pairs</span></button>
+<button type="button" class="box" data-m="4" data-k="ctx">LLM context<span>semantic selection in the client</span></button>
+</section>
+</div>
+<p class="legend"><span class="swatch done"></span>Validated in VM <span class="swatch"></span>Proposed, not implemented</p>
+<div class="detail" id="detail" aria-live="polite"><p>Select a box to read what it does and which reference it follows.</p></div>
+<h2 id="reading">How to read the plan</h2><ul><li><strong>The middle column is where MoobFS exists.</strong> Input and output are contracts with the outside world; the project's contribution is what happens inside the kernel between them.</li><li><strong>M2 carries most of the technical risk.</strong> PUT, transactions, indexes, xattr and QUERY all depend on it.</li><li><strong>M4 closes the loop without kernel code.</strong> Semantic retrieval and context assembly stay in the agent application, as decided in ADR-0005.</li></ul><p>Free software already covers several steps: <code>dm-log-writes</code> and xfstests for crash testing, virtme-ng for instrumented kernels, Haiku's <code>bfs_shell</code> as a behavioral oracle for queries. See the <a href="https://github.com/studiomoob/llmoobfs/blob/main/docs/ecosystem.md">ecosystem survey</a>.</p>
+<aside class="status"><p><strong>Status:</strong> only M1 is implemented and tested. The other boxes describe intent, not behavior. Each will require a format specification, invalid-input tests and an explicit compatibility decision before code.</p></aside></main><footer><div class="wrap"><p>MoobFS · A Studio Moob experiment · GPL-2.0-only</p><p><a href="https://github.com/studiomoob/llmoobfs/blob/main/CONTRIBUTING.md">Contribute</a> · <a href="https://github.com/studiomoob/llmoobfs/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/studiomoob/llmoobfs/blob/main/CODE_OF_CONDUCT.md">Conduct</a></p></div></footer>
+<script>
+(function () {
+  var detail = {
+    agent: 'An agent (mem0, Letta, Graphiti, cognee or custom code) decides what is worth keeping: an observation, a decision, a task record. This is M4. The filesystem does not interpret content.',
+    put: 'The CLI opens the .control file and sends a PUT with the bytes, typed attributes (string, int64, double, bool, time, raw) and a 128-bit request_id. Repeating the same request returns the same result, which covers a lost reply after commit.',
+    mkfs: 'Today the only input is offline: mkfs.moobfs takes name=file pairs, groups identical bytes and writes an immutable image. It refuses to overwrite. Validated in VM.',
+    val: 'At mount time the module reads the superblock, tables and payloads, and checks bounds, CRC32C of metadata and SHA-256 of content. Malformed images are rejected: 15 cases tested.',
+    dedup: 'Two files with the same bytes point to one object. FIEMAP reports the same physical offset and the SHARED flag. This is the foundation for storing repeated memories once.',
+    txn: 'Reference: metadata journaling in the Be File System. PUT computes SHA-256, compares bytes with candidates, allocates IDs, writes the journal and publishes atomically. Tests with dm-log-writes and xfstests.',
+    idx: 'Attributes marked indexable get a persistent index updated in the same transaction. It starts simple; an on-disk B+ tree follows when the 128-entry limit is lifted. Model: BFS indexes.',
+    rev: 'Each memory keeps immutable revisions; a snapshot pins one revision per memory. Opening a revision freezes its identity. Garbage-collection rules are still to be defined.',
+    read: 'Any program reads memories with ordinary open and read calls, no FUSE and no library. Tested: full reads, pread, page-crossing reads, EOF, writable mount rejected.',
+    xattr: 'getxattr and listxattr in the user.moob.* namespace return the typed attributes. Common POSIX tools can read metadata without a special CLI.',
+    query: 'A QUERY command on .control takes a bounded predicate (attribute, operator, value, conjunction) and returns (memory_id, revision) pairs. Behavioral oracle: Haiku’s bfs_shell.',
+    ctx: 'The application uses QUERY to narrow candidates, applies vector search (sqlite-vec, USearch) and assembles the context. M4 measures utility, space, latency and cost against baselines.'
+  };
+  var current = 4;
+  var boxes = document.querySelectorAll('.box');
+  var buttons = document.querySelectorAll('.milestones button');
+  function apply() {
+    boxes.forEach(function (b) { b.classList.toggle('dim', Number(b.dataset.m) > current); });
+    buttons.forEach(function (x) { x.setAttribute('aria-pressed', Number(x.dataset.m) === current ? 'true' : 'false'); });
+  }
+  buttons.forEach(function (x) { x.addEventListener('click', function () { current = Number(x.dataset.m); apply(); }); });
+  boxes.forEach(function (b) {
+    b.addEventListener('click', function () {
+      boxes.forEach(function (o) { o.classList.remove('selected'); });
+      b.classList.add('selected');
+      var panel = document.getElementById('detail');
+      panel.textContent = '';
+      var h = document.createElement('strong');
+      h.textContent = b.firstChild.textContent + ' · M' + b.dataset.m;
+      var p = document.createElement('p');
+      p.textContent = detail[b.dataset.k];
+      panel.appendChild(h);
+      panel.appendChild(p);
+    });
+  });
+  apply();
+})();
+</script></body></html>

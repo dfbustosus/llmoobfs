@@ -31,3 +31,12 @@ Nenhuma ferramenta foi executada; nenhuma integração foi feita.
 
 Comparações de camadas de memória vêm de fornecedores. O PDF do livro de Giampaolo não foi
 verificado. Próximo passo: iniciar o item 1 de `docs/ecosystem.md` (fuzzing de `common/`).
+
+## Adendo (2026-10-10): página interativa do plano no site
+
+Pedido: transformar o desenho de entrada/processamento/saída numa página do site e publicar.
+Criada `site/plan.html` (sem dependências, JavaScript mínimo, funciona sem JS com todas as
+caixas visíveis), estilos em `site/style.css`, links de navegação em `index.html` e `guide.html`.
+Validação: `python3 scripts/check-site.py` (3 páginas), `git diff --check`, prévia local em
+1280 px (três colunas, filtro por marco, painel de detalhe) e 375 px (uma coluna), ambas sem
+overflow horizontal medido. A página marca só o M1 como validado; o restante é proposta.
