@@ -36,6 +36,25 @@
 
 static struct kmem_cache *moobl_inode_cache;
 
+/*
+ * Attribute copy for unlocked paths (getattr, revalidate, after I/O). It
+ * deliberately leaves i_nlink alone: set_nlink() is not safe against
+ * concurrent callers and corrupts the superblock's remove count when two
+ * CPUs race on the same inode. Link counts change only in the name
+ * operations below, which the VFS serializes with the parent's lock.
+ */
+static void moobl_copy_attr(struct inode *dest, const struct inode *src)
+{
+	dest->i_mode = src->i_mode;
+	dest->i_uid = src->i_uid;
+	dest->i_gid = src->i_gid;
+	dest->i_rdev = src->i_rdev;
+	dest->i_blkbits = src->i_blkbits;
+	dest->i_flags = src->i_flags;
+	fsstack_copy_attr_times(dest, src);
+	fsstack_copy_inode_size(dest, (struct inode *)src);
+}
+
 static int moobl_set_lower_path(struct dentry *dentry, struct vfsmount *mnt,
 				struct dentry *lower_dentry)
 {
@@ -185,7 +204,7 @@ static int moobl_d_revalidate(struct dentry *dentry, unsigned int flags)
 	if (d_really_is_positive(dentry)) {
 		struct inode *inode = d_inode(dentry);
 
-		fsstack_copy_attr_all(inode, moobl_lower_inode(inode));
+		moobl_copy_attr(inode, moobl_lower_inode(inode));
 		if (!inode->i_nlink)
 			return 0;
 	}
@@ -274,6 +293,7 @@ static void moobl_unlock_parent(struct dentry *lower_dentry, struct inode *lower
 static int moobl_instantiate(struct inode *dir, struct dentry *dentry,
 			     struct dentry *lower_dentry, struct inode *lower_dir)
 {
+	struct moobl_dentry *info = dentry->d_fsdata;
 	struct inode *inode;
 
 	if (d_really_is_negative(lower_dentry))
@@ -281,6 +301,18 @@ static int moobl_instantiate(struct inode *dir, struct dentry *dentry,
 	inode = moobl_get_inode(dir->i_sb, d_inode(lower_dentry));
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
+	/*
+	 * A negative upper dentry may still reference the lower dentry of a
+	 * name that was unlinked and is now being recreated (SQLite does this
+	 * with -wal and -shm). Point it at the dentry the new file lives in,
+	 * otherwise later opens would reach the deleted lower inode.
+	 */
+	if (info->lower.dentry != lower_dentry) {
+		struct dentry *stale = info->lower.dentry;
+
+		info->lower.dentry = dget(lower_dentry);
+		dput(stale);
+	}
 	fsstack_copy_attr_times(dir, lower_dir);
 	fsstack_copy_inode_size(dir, lower_dir);
 	d_instantiate(dentry, inode);
@@ -417,6 +449,7 @@ static int moobl_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 	err = vfs_rename(&rd);
 	if (err)
 		goto out_unlock;
+	/* Name operations hold the parents' locks: link counts may be copied here. */
 	if (target)
 		fsstack_copy_attr_all(target, moobl_lower_inode(target));
 	fsstack_copy_attr_all(new_dir, d_inode(lower_new_dir));
@@ -600,7 +633,7 @@ static int moobl_xattr_set(const struct xattr_handler *handler, struct mnt_idmap
 		err = vfs_removexattr(&nop_mnt_idmap, lower, full);
 	if (err)
 		return err;
-	fsstack_copy_attr_all(inode, d_inode(lower));
+	moobl_copy_attr(inode, d_inode(lower));
 	if (typed) {
 		if (value)
 			moobl_index_set(inode->i_sb, dentry, full + MOOB_ATTR_PREFIX_LEN, value, size);
@@ -634,8 +667,7 @@ static int moobl_getattr(struct mnt_idmap *idmap, const struct path *path,
 	err = vfs_getattr_nosec(moobl_lower_path(dentry), &lower_stat, request_mask, flags);
 	if (err)
 		return err;
-	fsstack_copy_attr_all(inode, moobl_lower_inode(inode));
-	fsstack_copy_inode_size(inode, moobl_lower_inode(inode));
+	moobl_copy_attr(inode, moobl_lower_inode(inode));
 	generic_fillattr(&nop_mnt_idmap, request_mask, inode, stat);
 	stat->blocks = lower_stat.blocks;
 	stat->blksize = lower_stat.blksize;
@@ -659,10 +691,8 @@ static int moobl_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 	inode_lock(lower_inode);
 	err = notify_change(&nop_mnt_idmap, lower_dentry, &lower_ia, NULL);
 	inode_unlock(lower_inode);
-	if (!err) {
-		fsstack_copy_attr_all(inode, lower_inode);
-		fsstack_copy_inode_size(inode, lower_inode);
-	}
+	if (!err)
+		moobl_copy_attr(inode, lower_inode);
 	return err;
 }
 
@@ -721,8 +751,7 @@ static void moobl_file_modified(struct file *file)
 {
 	struct inode *inode = file_inode(file);
 
-	fsstack_copy_attr_all(inode, moobl_lower_inode(inode));
-	fsstack_copy_inode_size(inode, moobl_lower_inode(inode));
+	moobl_copy_attr(inode, moobl_lower_inode(inode));
 }
 
 static void moobl_file_end_write(struct file *file, loff_t pos, ssize_t ret)

@@ -62,8 +62,9 @@ rm -f build/vm/scratch.img build/vm/log.img
 truncate -s 64M build/vm/scratch.img
 truncate -s 64M build/vm/log.img
 # Dynamically linked clients and tools for the acceptance tests, with their libraries.
-stage_bin() {
-    cp -L "$1" "$STAGE/bin/$(basename "$1")"
+mkdir -p "$STAGE/tools"
+stage_bin() {   # real binaries live in /tools so busybox --install cannot shadow them
+    cp -L "$1" "$STAGE/tools/$(basename "$1")"
     ldd "$1" | awk '/=> \//{print $3} /^[[:space:]]*\/(lib|usr)/{print $1}' | sort -u | while read -r lib; do
         mkdir -p "$STAGE$(dirname "$lib")"
         cp -L "$lib" "$STAGE$lib"
@@ -75,7 +76,7 @@ stage_bin /usr/sbin/dmsetup
 stage_bin /usr/sbin/mke2fs
 stage_bin /usr/sbin/e2fsck
 mkdir -p "$STAGE/usr/lib/git-core"
-ln -s /bin/git "$STAGE/usr/lib/git-core/git"
+ln -s /tools/git "$STAGE/usr/lib/git-core/git"
 gcc -static -O2 tests/third_party/log-writes/replay-log.c tests/third_party/log-writes/log-writes.c -o "$STAGE/replay-log"
 python3 - "$KERNEL" "$STAGE/loop.ko" <<'PY'
 import lzma

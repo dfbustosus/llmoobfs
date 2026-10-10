@@ -159,6 +159,35 @@ int main(int argc, char **argv)
 	CHECK(!chmod(up("a.txt"), 0600));
 	CHECK(!stat(lo("a.txt"), &lst) && (lst.st_mode & 07777) == 0600);
 
+	/* unlink + recreate under the same name: the new file must be the one opened afterwards
+	 * (this is the SQLite -wal/-shm pattern that lost WAL frames in phase 2e) */
+	fd = open(up("again"), O_RDWR | O_CREAT | O_TRUNC, 0600); CHECK(fd >= 0);
+	CHECK(write(fd, "old", 3) == 3); close(fd);
+	CHECK(!unlink(up("again")));
+	fd = open(up("again"), O_RDWR | O_CREAT | O_TRUNC, 0600); CHECK(fd >= 0);
+	CHECK(write(fd, "new", 3) == 3); close(fd);
+	fd = open(up("again"), O_RDONLY); CHECK(fd >= 0);
+	CHECK(read(fd, buf, 3) == 3 && !memcmp(buf, "new", 3)); close(fd);
+	CHECK(same_content(up("again"), lo("again")));
+	CHECK(!stat(up("again"), &st) && !stat(lo("again"), &lst) && st.st_ino == lst.st_ino);
+	{	/* and with the old file still open elsewhere while the name is reused */
+		int old = open(up("again"), O_RDONLY); CHECK(old >= 0);
+		CHECK(!unlink(up("again")));
+		fd = open(up("again"), O_RDWR | O_CREAT | O_TRUNC, 0600); CHECK(fd >= 0);
+		CHECK(write(fd, "third", 5) == 3 + 2); close(fd);
+		fd = open(up("again"), O_RDONLY); CHECK(fd >= 0);
+		CHECK(read(fd, buf, 5) == 5 && !memcmp(buf, "third", 5)); close(fd);
+		CHECK(pread(old, buf, 3, 0) == 3 && !memcmp(buf, "new", 3));	/* deleted file keeps its content */
+		close(old);
+		CHECK(same_content(up("again"), lo("again")));
+	}
+	CHECK(!unlink(up("again")));
+	CHECK(!mkdir(up("dagain"), 0700) && !rmdir(up("dagain")) && !mkdir(up("dagain"), 0700));
+	CHECK(!stat(lo("dagain"), &lst) && S_ISDIR(lst.st_mode));
+	fd = open(up("dagain/inner"), O_WRONLY | O_CREAT, 0600); CHECK(fd >= 0); close(fd);
+	CHECK(!stat(lo("dagain/inner"), &lst));
+	CHECK(!unlink(up("dagain/inner")) && !rmdir(up("dagain")));
+
 	/* rename: plain, over an existing target, directory, cross-directory, noreplace */
 	CHECK(!rename(up("a.txt"), up("c.txt")));
 	errno = 0; CHECK(stat(lo("a.txt"), &lst) == -1 && errno == ENOENT);

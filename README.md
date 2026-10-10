@@ -22,12 +22,14 @@ MoobFS does not currently provide them or extend a model's context window.
 ## Implemented today: M1 (read-only sharing) and phase 2a of the memory layer
 
 Since [ADR-0007](docs/decisions/0007-stacked-memory-layer.md) MoobFS is being built as a
-**native stacked layer over a mature filesystem**. Phases 2a to 2d deliver a complete pass-through module
+**native stacked layer over a mature filesystem**. Phases 2a to 2e deliver a complete pass-through module
 (`layer/moobfs_layer.ko`, `mount -t moobfs_layer -o lower=<dir>[,nolinks]`) validated in the test VM
 over ext4, btrfs and XFS with `fsx`, including delegated reflink and dedupe, plus the first
 memory features: typed `user.moob.*` attributes validated in the kernel, an in-memory
 attribute index and a `QUERY` ioctl that answers conjunctive attribute predicates from the
-kernel, verified against a user-space oracle. The M1 experiment below remains as the
+kernel, verified against a user-space oracle. Acceptance: git and a concurrent WAL-mode SQLite run
+unchanged on the mount, and power-loss replays with dm-log-writes keep every memory that was
+synced before the crash. The M1 experiment below remains as the
 validated proof of native shared reads and runs as a regression in the same VM.
 
 ### The read-only M1 milestone
@@ -89,6 +91,7 @@ MOOBFS_VM_PASS: shared extents, independent inodes, reads, readonly, remount, 15
 LAYER_LOWER_PASS: ext4 reflink=no
 LAYER_LOWER_PASS: btrfs reflink=yes
 LAYER_LOWER_PASS: xfs reflink=yes
+MOOBFS_ACCEPTANCE_PASS: git, sqlite wal, memory client, dm-log-writes replay, dm-flakey
 MOOBFS_LAYER_PASS: pass-through over ext4, btrfs and xfs; layer tests; typed attributes and tools; index and QUERY equal to the oracle; fsx 9000 ops each; reflink on btrfs/xfs; nolinks; unload
 ```
 
@@ -105,7 +108,7 @@ Metadata and alignment overhead still count toward total image size.
 | Verifier | Structural checks, bounds, CRC32C metadata, SHA-256 payload checks |
 | Limits | 128 files/objects, 64 KiB per object, printable ASCII names up to 63 bytes |
 | Validation | 9 tool tests, sanitizers for tools, actual QEMU mounts and 15 malformed images |
-| Memory layer (phases 2a–2d) | Stacked pass-through over ext4, btrfs and XFS: files, directories, rename, links, xattr, mmap, fsync, delegated reflink/dedupe; typed `user.moob.*` attributes validated on write; in-memory index and `QUERY`/`GET_INFO` ioctls (UAPI v1) |
+| Memory layer (phases 2a–2e) | Stacked pass-through over ext4, btrfs and XFS: files, directories, rename, links, xattr, mmap, fsync, delegated reflink/dedupe; typed `user.moob.*` attributes validated on write; in-memory index and `QUERY`/`GET_INFO` ioctls (UAPI v1) |
 
 Images are immutable while mounted. Files have independent inodes and link count
 1; this is not hard linking. The module validates all content at mount, which

@@ -103,8 +103,11 @@ Montagem `ro`: nenhuma escrita chega ao inferior; o índice é construído norma
   o que significa no inferior.
 - Conteúdo e atributos não são gravados atomicamente juntos (são operações distintas no
   inferior). Convenção recomendada aos clientes: gravar conteúdo em arquivo temporário, definir
-  atributos, `fsync`, `rename`. Com essa ordem, um arquivo visível no nome final tem conteúdo e
-  atributos completos.
+  atributos, `fsync` do arquivo, `rename`, e `fsync` do diretório pai. Com essa ordem, um
+  arquivo visível no nome final tem conteúdo e atributos completos, e o nome sobrevive a uma
+  queda de energia. Sem o `fsync` do diretório, o `rename` só se torna durável no próximo commit
+  do journal do inferior (verificado com `dm-log-writes` na fase 2e: o arquivo renomeado não
+  estava presente na marca gravada logo após o `rename`).
 - Falha de I/O no inferior propaga ao chamador; a camada não marca estado próprio.
 - Queda de energia: o inferior recupera; a camada reconstrói o índice.
 
@@ -173,7 +176,7 @@ importáveis pela ferramenta da seção 7.
 | 2b | Passagem completa (rename, unlink, truncate, locks, splice, xattr opacos); btrfs e XFS como inferiores; reflink delegado | **Validada em 2026-10-10** ([registro 0012](history/0012-phase-2b-full-passthrough.md)): `FICLONE`/`FIDEDUPERANGE` funcionam sobre btrfs e XFS; xfstests completo e KASAN/lockdep ainda pendentes |
 | 2c | Codificação tipada, validação, `moobfs-check`, `moobfs-attr`, fuzzing | **Validada em 2026-10-10** ([registro 0013](history/0013-phase-2c-typed-attributes.md)): entradas inválidas rejeitadas no kernel e pelas ferramentas; fuzzing no CI |
 | 2d | Índice em RAM, `QUERY`, `GET_INFO`, `moobfs-index` como oráculo | **Validada em 2026-10-10** ([registro 0014](history/0014-phase-2d-index-query.md)): dez consultas idênticas kernel/oráculo em ext4, btrfs e XFS; `noindex` e `index_budget` exercitados |
-| 2e | Aceitação com git + SQLite + cliente de memória próprio; dm-log-writes; dm-flakey | Registro em `docs/history/` com comandos e números |
+| 2e | Aceitação com git + SQLite + cliente de memória próprio; dm-log-writes; dm-flakey | **Validada em 2026-10-10** ([registro 0015](history/0015-phase-2e-investigation.md)): dois defeitos da camada encontrados e corrigidos; xfstests completo e KASAN/lockdep seguem pendentes |
 
 ## 12. Questões em aberto
 

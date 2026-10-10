@@ -2,6 +2,10 @@
 
 ## Unreleased — 2026-10-10
 
+- Phase 2e: acceptance with git, SQLite (WAL, concurrent processes) and an own memory client;
+  power-loss replay with dm-log-writes and I/O error injection with dm-flakey. Two layer bugs
+  found and fixed: stale lower dentry after unlink+recreate (lost SQLite WAL frames) and a
+  concurrent `set_nlink` race on unlocked attribute copies (kernel warning on CI).
 - Phase 2d: in-memory attribute index built at mount and kept current on writes; `QUERY` and
   `GET_INFO` ioctls on the mount root (UAPI v1); `moobfs-index` user-space oracle; kernel answers
   verified identical to the oracle over ext4, btrfs and XFS.

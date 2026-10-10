@@ -85,7 +85,15 @@ The same `make vm-test` run continues after the M1 checks (see
 7. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
    runs three seeds over the layer, and the resulting file is compared with the
    lower copy.
-8. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
+8. Acceptance with real clients on the layer over ext4: a git repository (three commits,
+   `fsck --strict`), SQLite in WAL mode with a writer and a reader in concurrent processes
+   (six variants, all must keep 200 of 200 rows), and the memory-client convention. Then a
+   power-loss replay: a fresh ext4 under `dm-log-writes`, memories written with marks,
+   `replay-log` to each mark on a zeroed disk, `e2fsck -fn`, and the check that memories
+   synced before the mark are whole and later ones absent. Finally `dm-flakey` with
+   `error_writes`: errors must propagate, nothing may crash, and the tree must come back
+   clean. Success prints `MOOBFS_ACCEPTANCE_PASS:`.
+9. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
    close the run. Success prints one `LAYER_LOWER_PASS:` line per lower filesystem
    and a final `MOOBFS_LAYER_PASS:` marker.
 

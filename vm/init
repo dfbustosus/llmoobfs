@@ -161,7 +161,7 @@ run_lower xfs /dev/vdc yes
 
 # Phase 2e: acceptance with clients that do not know MoobFS (git, SQLite), an own memory
 # client, power loss under dm-log-writes and I/O errors under dm-flakey.
-export PATH=/bin
+export PATH=/tools:/bin
 export HOME=/tmp GIT_CONFIG_NOSYSTEM=1 GIT_EXEC_PATH=/usr/lib/git-core GIT_TEMPLATE_DIR=/nonexistent
 export DM_DISABLE_UDEV=1
 remember() {   # remember <mount> <relative path> <kind> <score> : the client convention of spec-m2 §6
@@ -173,6 +173,7 @@ remember() {   # remember <mount> <relative path> <kind> <score> : the client co
     mkdir -p "$(dirname "$1/$2")" || return 1
     sync "$tmp" 2>/dev/null || sync
     mv "$tmp" "$1/$2" || return 1
+    sync    # a rename is durable only after the parent directory is synced; clients must fsync it
 }
 mount -t ext4 /dev/vda /lower || fail acc-lower-mount
 mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail acc-layer-mount
@@ -197,7 +198,8 @@ cd /
 sq() { sqlite3 -cmd ".timeout 10000" "$@"; }   # concurrent CLI processes wait for fcntl locks instead of failing
 sqlite_run() {   # sqlite_run <writer db path> <reader db path or -> <mode wal|delete> <label> [vfs]
     DB=$1; RDB=$2; MODE=$3
-    if [ -n "$5" ]; then sq() { sqlite3 -vfs "$5" -cmd ".timeout 10000" "$@"; }; else sq() { sqlite3 -cmd ".timeout 10000" "$@"; }; fi
+    VFS=$5
+    if [ -n "$VFS" ]; then sq() { sqlite3 -vfs "$VFS" -cmd ".timeout 10000" "$@"; }; else sq() { sqlite3 -cmd ".timeout 10000" "$@"; }; fi
     rm -f "$DB" "$DB-wal" "$DB-shm" "$DB-journal"
     sq "$DB" "PRAGMA journal_mode=$MODE; CREATE TABLE memories(id INTEGER PRIMARY KEY, path TEXT, score INT);" | grep -qi "$MODE" || fail "sqlite-mode-$4"
     ( for i in $(seq 1 200); do sq "$DB" "INSERT INTO memories(path, score) VALUES('p$i', $i);" || { echo "writer failed at $i ($4)"; exit 1; }; done ) &
@@ -218,12 +220,11 @@ sqlite_run /mnt/layer/a1.db - wal layer-wal-alone; r2=$?
 sqlite_run /mnt/layer/m1.db /mnt/layer/m1.db wal layer-wal; r3=$?
 sqlite_run /mnt/layer/m2.db /mnt/layer/m2.db delete layer-rollback; r4=$?
 sqlite_run /mnt/layer/m3.db /mnt/layer/m3.db wal layer-wal-unix-excl unix-excl; r5=$?
-sqlite_run /mnt/layer/m4.db /mnt/layer/m4.db wal layer-wal-unix-dotfile unix-dotfile; r6=$?
-sqlite_run /lower/c2.db /lower/c2.db wal lower-wal-unix-dotfile unix-dotfile; r7=$?
-echo "SQLITE_VARIANTS: lower=$r1 alone=$r2 layer=$r3 rollback=$r4 excl=$r5 dotfile=$r6 lower-dotfile=$r7"
+sqlite_run /mnt/layer/m5.db /mnt/layer/m5.db wal layer-wal-again; r6=$?
+echo "SQLITE_VARIANTS: lower=$r1 alone=$r2 layer=$r3 rollback=$r4 excl=$r5 again=$r6"
 [ $r1 -eq 0 ] || fail acc-sqlite-control
 [ $r2 -eq 0 ] || fail acc-sqlite-layer-alone
-[ $r3 -eq 0 ] || fail acc-sqlite-layer-reader
+[ $r3 -eq 0 ] && [ $r6 -eq 0 ] || fail acc-sqlite-layer-reader
 echo "SQLITE_CONCURRENT_OK"
 /moobfs-check /lower > /dev/null || fail acc-check
 umount /mnt/layer || fail acc-layer-umount
@@ -233,24 +234,24 @@ echo "ACCEPTANCE_CLIENTS_PASS"
 # on a zeroed disk and check that every memory completed before the mark is whole.
 SCRATCH=/dev/vdd; LOGDEV=/dev/vde
 dd if=/dev/zero of=$SCRATCH bs=1M count=64 2>/dev/null || fail lw-zero
-dmsetup create lw --table "0 $(blockdev --getsz $SCRATCH) log-writes $SCRATCH $LOGDEV" || fail lw-create
-mke2fs -q -F -t ext4 -b 4096 /dev/mapper/lw || fail lw-mkfs
-dmsetup message lw 0 mark mkfs || fail lw-mark-mkfs
+/tools/dmsetup create lw --table "0 $(blockdev --getsz $SCRATCH) log-writes $SCRATCH $LOGDEV" || fail lw-create
+/tools/mke2fs -q -F -t ext4 -b 4096 /dev/mapper/lw || fail lw-mkfs
+/tools/dmsetup message lw 0 mark mkfs || fail lw-mark-mkfs
 mount -t ext4 /dev/mapper/lw /lower || fail lw-lower-mount
 mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail lw-layer-mount
 for i in 1 2 3 4; do
     remember /mnt/layer "mem/m$i.md" decision $i || fail "lw-remember-$i"
-    dmsetup message lw 0 mark "m$i" || fail "lw-mark-$i"
+    /tools/dmsetup message lw 0 mark "m$i" || fail "lw-mark-$i"
 done
 umount /mnt/layer || fail lw-layer-umount
 umount /lower || fail lw-lower-umount
-dmsetup message lw 0 mark end || fail lw-mark-end
-dmsetup remove lw || fail lw-remove
+/tools/dmsetup message lw 0 mark end || fail lw-mark-end
+/tools/dmsetup remove lw || fail lw-remove
 check_mark() {   # replay up to a mark; memories 1..$2 must be whole, later ones absent
     dd if=/dev/zero of=$SCRATCH bs=1M count=64 2>/dev/null || return 1
     /replay-log --log $LOGDEV --replay $SCRATCH --end-mark "$1" || return 1
     mount -t ext4 $SCRATCH /lower && umount /lower || return 1      # journal recovery, as after a reboot
-    e2fsck -fn $SCRATCH > /tmp/fsck.txt 2>&1 || { cat /tmp/fsck.txt; return 1; }
+    /tools/e2fsck -fn $SCRATCH > /tmp/fsck.txt 2>&1 || { cat /tmp/fsck.txt; return 1; }
     mount -t ext4 -o ro $SCRATCH /lower || return 1
     mount -t moobfs_layer -o lower=/lower none /mnt/layer || return 1
     n=0
@@ -276,21 +277,21 @@ echo "POWER_LOSS_REPLAY_PASS: marks mkfs m1 m2 m4 end"
 # I/O errors: the lower device starts erroring every write; errors must reach the caller,
 # nothing may crash, and the tree must come back clean once the device is healthy again.
 dd if=/dev/zero of=$SCRATCH bs=1M count=64 2>/dev/null || fail fl-zero
-mke2fs -q -F -t ext4 -b 4096 $SCRATCH || fail fl-mkfs
+/tools/mke2fs -q -F -t ext4 -b 4096 $SCRATCH || fail fl-mkfs
 SZ=$(blockdev --getsz $SCRATCH)
-dmsetup create fl --table "0 $SZ linear $SCRATCH 0" || fail fl-create
+/tools/dmsetup create fl --table "0 $SZ linear $SCRATCH 0" || fail fl-create
 mount -t ext4 /dev/mapper/fl /lower || fail fl-lower-mount
 mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail fl-layer-mount
 remember /mnt/layer "ok.md" note 1 || fail fl-remember-ok
 sync
-dmsetup suspend fl && dmsetup reload fl --table "0 $SZ flakey $SCRATCH 0 0 1 1 error_writes" && dmsetup resume fl || fail fl-reload-down
+/tools/dmsetup suspend fl && dmsetup reload fl --table "0 $SZ flakey $SCRATCH 0 0 1 1 error_writes" && dmsetup resume fl || fail fl-reload-down
 remember /mnt/layer "lost.md" note 2 2>/dev/null && sync && echo "note: writes were absorbed by the page cache before the device reported errors"
 sync 2>/dev/null
-dmsetup suspend fl && dmsetup reload fl --table "0 $SZ linear $SCRATCH 0" && dmsetup resume fl || fail fl-reload-up
+/tools/dmsetup suspend --noflush --nolockfs fl && dmsetup reload fl --table "0 $SZ linear $SCRATCH 0" && dmsetup resume fl || fail fl-reload-up
 umount /mnt/layer 2>/dev/null || true
 umount /lower 2>/dev/null || true
-dmsetup remove fl || fail fl-remove
-e2fsck -fy $SCRATCH > /tmp/fsck.txt 2>&1; rc=$?; [ $rc -le 1 ] || { cat /tmp/fsck.txt; fail fl-fsck; }
+/tools/dmsetup remove fl || fail fl-remove
+/tools/e2fsck -fy $SCRATCH > /tmp/fsck.txt 2>&1; rc=$?; [ $rc -le 1 ] || { cat /tmp/fsck.txt; fail fl-fsck; }
 mount -t ext4 $SCRATCH /lower || fail fl-remount
 mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail fl-layer-remount
 grep -q 'memory ok.md' /mnt/layer/ok.md || fail fl-ok-content
