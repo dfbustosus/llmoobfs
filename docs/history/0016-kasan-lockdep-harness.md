@@ -50,3 +50,9 @@ do fluxo do dado) e a pendência mais pesada do M2, validação com KASAN e lock
   Segunda falha, de harness: a parametrização não cobria opções com vírgula
   (`lower=/lower,noindex`), corrigido.
 - Próximo run anexado abaixo.
+
+Nota de 2026-10-10: depois da reescrita da história (registro 0018), o workflow "KASAN and
+lockdep" foi executado de novo sobre `main` (execução 38074631812, kernel 6.12.112-virtme):
+`MOOBFS_KASAN_PASS`, com `LAYER_LOWER_PASS` em ext4, btrfs e xfs, `MOOBFS_ACCEPTANCE_PASS`
+(git, SQLite WAL, cliente de memória, replay `dm-log-writes`, `dm-flakey`) e nenhum
+diagnóstico de kernel. O CI comum (execução 38074616460) também passou.

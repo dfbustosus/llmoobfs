@@ -2,6 +2,18 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/project-review-2026-10-10.md`: implementation and roadmap review, static QUERY
+  correctness findings, configurations requiring Linux reproduction, and a proposed
+  focused benchmark and agent-memory demonstration. Analysis only; no code fixes.
+- `docs/research-originality.md`: prior-art and originality audit (SFS, BFS, YoloFS, SMFS and
+  others; patents described, no legal opinion); claims classified as proven, probable or
+  unverified, with a list of statements to avoid in public texts.
+- `docs/distribution-strategy.md`: proposed deployment model (Core, Workspace, Integration),
+  DKMS packaging and kernel matrix, container bind-mount limits, incremental release plan;
+  nothing implemented.
+- `docs/value-assessment.md`: critical assessment of real usefulness, value proposition and
+  maturity as an adoption criterion; today's recommendation for production stays SQLite or
+  plain files; code findings on index term selection and budget accounting recorded.
 - `docs/spec-m3.md`: M3 specification proposal (identity, isolation, provenance, change cursor,
   batch reads).
 - `docs/benchmark-plan.md`: M4 benchmark methodology, baselines and the real clients used as

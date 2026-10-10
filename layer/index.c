@@ -767,15 +767,82 @@ static void fill_result(struct moobl_index *ix, struct moobl_ix_inode *rec,
 	r->path[r->path_len] = '\0';
 }
 
-static long do_query(struct super_block *sb, void __user *arg)
+/*
+ * Candidates are gathered under the index lock in bounded chunks, then checked
+ * against the caller's own credentials with the lock released: the recorded
+ * path is resolved through the VFS (search permission on every directory,
+ * read permission on the file), the resolved object must belong to this mount
+ * and carry the indexed inode number. Entries the caller may not reach are
+ * omitted silently and do not count toward limit or truncated, so neither
+ * existence nor count leaks. Operational failures (ENOMEM, EFAULT) are
+ * returned, never turned into an empty answer. The scan resumes after each
+ * chunk from the last (type, value, ino) key, which stays meaningful even if
+ * the tree changed meanwhile, so the number of examined candidates is not
+ * bounded by the result limit.
+ */
+#define MOOBL_QUERY_CHUNK 256U
+
+struct moobl_candidate {
+	u64 ino;
+	char *path;	/* mount-relative, or NULL when unknown */
+};
+
+struct moobl_resume {
+	bool valid;
+	u8 type;
+	u16 len;
+	u64 ino;
+	u8 value[MOOB_QUERY_VALUE_MAX];
+};
+
+static bool caller_may_read(struct file *file, struct super_block *sb, const char *path, u64 ino)
+{
+	struct path p;
+	bool ok = false;
+
+	if (!path || !*path)
+		return false;
+	if (vfs_path_lookup(file->f_path.dentry, file->f_path.mnt, path, 0, &p))
+		return false;
+	if (p.mnt == file->f_path.mnt && p.dentry->d_sb == sb && d_inode(p.dentry) &&
+	    d_inode(p.dentry)->i_ino == ino &&
+	    !inode_permission(&nop_mnt_idmap, d_inode(p.dentry), MAY_READ))
+		ok = true;
+	path_put(&p);
+	return ok;
+}
+
+/* First entry strictly after the resume key, or the first entry when no key. */
+static struct rb_node *first_after(struct moobl_ix_name *nm, const struct moobl_resume *r)
+{
+	struct rb_node *n = nm->entries.rb_node, *best = NULL;
+
+	if (!r->valid)
+		return rb_first(&nm->entries);
+	while (n) {
+		struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
+
+		if (entry_cmp(e, r->type, r->value, r->len, r->ino) > 0) {
+			best = n;
+			n = n->rb_left;
+		} else {
+			n = n->rb_right;
+		}
+	}
+	return best;
+}
+
+static long do_query(struct super_block *sb, struct file *file, void __user *arg)
 {
 	struct moobl_index *ix = IX(sb);
 	struct moob_query *q;
-	struct moob_query_result *out;
-	struct moobl_ix_name *nm;
-	struct rb_node *n;
-	char *pathbuf;
+	struct moob_query_result *out = NULL;
+	struct moobl_candidate *cand = NULL;
+	struct moobl_resume *resume = NULL;
+	struct moob_query_result tmp;
+	char *pathbuf = NULL;
 	u32 i, count = 0;
+	bool exhausted = false;
 	long err = 0;
 
 	if (!ix->enabled)
@@ -795,32 +862,81 @@ static long do_query(struct super_block *sb, void __user *arg)
 			goto out_q;
 	}
 	out = kvcalloc(q->limit, sizeof(*out), GFP_KERNEL);
+	cand = kcalloc(MOOBL_QUERY_CHUNK, sizeof(*cand), GFP_KERNEL);
+	resume = kzalloc(sizeof(*resume), GFP_KERNEL);
 	pathbuf = (char *)__get_free_page(GFP_KERNEL);
-	if (!out || !pathbuf) {
+	if (!out || !cand || !resume || !pathbuf) {
 		err = -ENOMEM;
 		goto out_buf;
 	}
 	q->truncated = 0;
-	down_read(&ix->lock);
-	nm = name_find(ix, q->terms[0].name);
-	for (n = nm ? rb_first(&nm->entries) : NULL; n; n = rb_next(n)) {
-		struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
+	while (!exhausted && !err) {
+		struct moobl_ix_name *nm;
+		struct rb_node *n;
+		u32 ncand = 0;
 
-		if (!entry_matches(e, &q->terms[0]) || !inode_matches_rest(e->owner, q))
-			continue;
-		if (count == q->limit) {
-			q->truncated = 1;
-			break;
+		down_read(&ix->lock);
+		nm = name_find(ix, q->terms[0].name);
+		n = nm ? first_after(nm, resume) : NULL;
+		for (; n; n = rb_next(n)) {
+			struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
+
+			resume->valid = true;
+			resume->type = e->type;
+			resume->len = e->len;
+			resume->ino = e->owner->ino;
+			memcpy(resume->value, e->value, e->len);
+			if (!entry_matches(e, &q->terms[0]) || !inode_matches_rest(e->owner, q))
+				continue;
+			fill_result(ix, e->owner, &tmp, pathbuf);
+			cand[ncand].ino = tmp.ino;
+			cand[ncand].path = NULL;
+			if (!(tmp.flags & MOOB_RES_PATH_UNKNOWN)) {
+				cand[ncand].path = kstrdup(tmp.path, GFP_ATOMIC);
+				if (!cand[ncand].path) {
+					err = -ENOMEM;
+					break;
+				}
+			}
+			ncand++;
+			if (ncand == MOOBL_QUERY_CHUNK) {
+				n = rb_next(n);
+				break;
+			}
 		}
-		fill_result(ix, e->owner, &out[count++], pathbuf);
+		if (!n)
+			exhausted = true;
+		up_read(&ix->lock);
+		for (i = 0; i < ncand; i++) {
+			if (!err && caller_may_read(file, sb, cand[i].path, cand[i].ino)) {
+				if (count == q->limit) {
+					q->truncated = 1;
+					exhausted = true;
+				} else {
+					out[count].ino = cand[i].ino;
+					out[count].flags = 0;
+					out[count].path_len = (u32)strlen(cand[i].path);
+					memcpy(out[count].path, cand[i].path, out[count].path_len + 1);
+					count++;
+				}
+			}
+			kfree(cand[i].path);
+			cand[i].path = NULL;
+		}
 	}
-	up_read(&ix->lock);
+	if (err)
+		goto out_buf;
 	q->count = count;
 	if (count && copy_to_user(u64_to_user_ptr(q->results), out, count * sizeof(*out)))
 		err = -EFAULT;
 	else if (copy_to_user(arg, q, sizeof(*q)))
 		err = -EFAULT;
 out_buf:
+	if (cand)
+		for (i = 0; i < MOOBL_QUERY_CHUNK; i++)
+			kfree(cand[i].path);
+	kfree(cand);
+	kfree(resume);
 	if (pathbuf)
 		free_page((unsigned long)pathbuf);
 	kvfree(out);
@@ -876,7 +992,7 @@ long moobl_root_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return -ENOTTY;
 	switch (cmd) {
 	case MOOB_IOC_QUERY:
-		return do_query(sb, (void __user *)arg);
+		return do_query(sb, file, (void __user *)arg);
 	case MOOB_IOC_GET_INFO:
 		return do_get_info(sb, (void __user *)arg);
 	default:

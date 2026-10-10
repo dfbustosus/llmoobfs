@@ -54,6 +54,8 @@ Resultado do harness Debian; KASAN sobre a branch; ACLs POSIX no teste (pacote `
 imagem); teste de `chmod`/`rename`/`unlink` concorrentes com consultas; anotar em
 `docs/spec-m3.md` o contrato TOCTOU e a semântica de erros; atualizar
 `docs/benchmark-harness.md` com as formas fixas de W3 e os índices; registro final.
+(Atualização 2026-10-10: tudo feito exceto o KASAN sobre a branch, em execução; ver as seções
+de evidência abaixo.)
 
 ## Terceira rodada da revisão externa: decisões aceitas e evidência de código
 
@@ -90,5 +92,69 @@ na VM (`mount_setattr` deve falhar com `EINVAL`; `unshare -Ur` + mount deve falh
 concedem/ACL nega, travessia por ACL, ACL alterada após índice e durante consultas), e os
 testes de idmap/userns em `vm/suite.sh`.
 
-Execução local da fase 3b com a raiz do initramfs em 0755: em andamento no momento deste
-registro; resultado a anexar.
+Execução local da fase 3b com a raiz do initramfs em 0755 (`make vm-test`, kernel Debian
+6.12.111): `ISOLATION_PASS` em ext4, btrfs e XFS, inclusive o cenário de 600 candidatos
+privados com 6 autorizados; regressão inteira passou (`MOOBFS_ACCEPTANCE_PASS`,
+`MOOBFS_LAYER_PASS`), sem avisos de kernel. Pendente para fechar a fase: ACLs, idmap/userns na
+suíte, KASAN sobre a branch, e merge em `main` por pull request.
+
+
+## Achado da terceira rodada: ACLs POSIX não atravessavam a camada
+
+O teste de ACL pedido pela revisão falhou de imediato: `setfacl` pela camada devolvia
+"Operation not supported". Causa: no 6.12 o VFS trata `system.posix_acl_access/default` pelas
+operações `get_acl`/`set_acl` da inode (e pela flag `SB_POSIXACL` do superbloco), não pelos
+handlers de xattr; a camada só tinha o handler genérico. A afirmação anterior de que "ACLs
+chegam ao inferior pela passagem de xattr" estava errada e a revisão acertou em exigir prova.
+Correção: `moobl_get_acl`/`moobl_set_acl` delegando a `vfs_get_acl`/`vfs_set_acl`/
+`vfs_remove_acl` no dentry inferior, como o ecryptfs, e `SB_POSIXACL` herdada do inferior. A
+decisão de autorização continua delegada ao inferior; só a escrita e a leitura de ACLs pela
+camada passaram a funcionar.
+
+## Evidência final da fase na VM (2026-10-10)
+
+`make vm-test` sobre a branch `m3/3b-query-authz` (commit `fb8f9a1`, kernel Debian 6.12.111),
+depois do handshake no teste de user namespace: `ISOLATION_PASS` em ext4, btrfs e XFS, cada um
+precedido de `IDMAP_REFUSED_EINVAL` e `USERNS_MOUNT_REFUSED_EPERM`; os testes de ACL (bits
+negam e ACL concede, bits concedem e ACL nega, travessia por ACL, ACL alterada depois do índice)
+e de identidade (`moobfs-check` com duplicata em inode distinto, hard link aceito, mesmo id em
+outro namespace aceito) passaram dentro do mesmo bloco; `MOOBFS_ACCEPTANCE_PASS` e
+`MOOBFS_LAYER_PASS` sem avisos de kernel. Ficam pendentes KASAN sobre a branch e o merge em
+`main` por pull request.
+
+## Concorrência entre mudanças de permissão, nomes e inodes e o `QUERY` (2026-10-10)
+
+Teste novo em `tests/query.c` (`query --uid N <mount> race <segundos>`) e bloco correspondente
+em `vm/suite.sh`: durante 5 s, root alterna `chmod 0600/0644`, renomeia e recria cada um de
+40 arquivos e, a cada sete rodadas, renomeia o diretório inteiro, enquanto o uid 1001 repete o
+`QUERY`. Invariantes verificados a cada resposta: resultado bem formado (caminho terminado em
+zero, relativo, sem `..`), contagem dentro do limite, e cada caminho abre com as credenciais do
+chamador ou falha só com `ENOENT` (removido ou renomeado depois da resposta) ou `EACCES`
+(`chmod` depois da resposta), que é exatamente a janela TOCTOU aceita no contrato de
+`docs/spec-m3.md` §3.1; caminhos marcados `MOOB_RES_PATH_UNKNOWN` (diretório renomeado) são
+ignorados. Ao fim, `chmod 0644` em tudo e o `QUERY` deve ser igual ao oráculo.
+
+Resultado (`make vm-test`, kernel Debian 6.12.111, `build/vm-test-race.log`):
+
+| Inferior | consultas em 5 s | resultados abertos | `ENOENT` depois da resposta | `EACCES` depois da resposta |
+| --- | --- | --- | --- | --- |
+| ext4 | 626 | 27624 | 678 | 35 |
+| btrfs | 616 | 27513 | 428 | 17 |
+| xfs | 618 | 27447 | 493 | 26 |
+
+Nenhum resultado malformado, nenhum erro diferente dos dois previstos, resposta final igual ao
+oráculo nos três, sem avisos de kernel; `MOOBFS_LAYER_PASS` e `MOOBFS_ACCEPTANCE_PASS`. O
+teste é de robustez e de contrato, não de desempenho: a VM roda em emulação (TCG).
+
+## KASAN sobre a branch (2026-10-10)
+
+Execução 38076335715: falhou em `acl-set-ext4` por ambiente (workflow sem o pacote `acl`, sem
+`setfacl` no guest virtme-ng e sem o binário `idmap`); corrigido em `.github/workflows/kasan.yml`
+e `vm/kasan-guest.sh`. Execução 38077926732: ACLs passaram; falhou em `contract-idmap-ext4`
+porque o kernel KASAN não habilitava `CONFIG_USER_NS`, logo `unshare(CLONE_NEWUSER)` falhava no
+teste. Correção: `CONFIG_NAMESPACES`, `CONFIG_USER_NS` e `CONFIG_FS_POSIX_ACL` em
+`vm/kasan.config`. Execução 38079499011 (kernel 6.12.112 com KASAN, UBSAN e lockdep):
+`MOOBFS_KASAN_PASS`, `ISOLATION_PASS` em ext4, btrfs e xfs com `IDMAP_REFUSED_EINVAL` e
+`USERNS_MOUNT_REFUSED_EPERM`, teste de concorrência com 41 a 75 consultas em 5 s (kernel
+instrumentado é mais lento), sem nenhum diagnóstico de kernel. A fase 3b está encerrada no
+que depende de código e teste; resta o merge em `main` por pull request.

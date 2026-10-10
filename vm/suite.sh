@@ -117,6 +117,107 @@ run_lower() {
     umount $LAYER || fail "q-umount4-$fs"
     mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "q-remount-final-$fs"
     rm -rf $LAYER/r || fail "q-cleanup-$fs"
+    # isolation (M3 phase 3b): two users, two namespaces; QUERY as each user must equal the
+    # oracle run as that user, and must not reveal the other namespace, not even in counts
+    mkdir -p $LAYER/ns/a $LAYER/ns/b $LAYER/ns/shared || fail "iso-mkdir-$fs"
+    for d in a b shared; do
+        for i in 1 2 3; do
+            echo "secret $d $i" > $LAYER/ns/$d/m$i.md
+            chmod 0600 $LAYER/ns/$d/m$i.md || fail "iso-mode-$fs"
+            $BIN/moobfs-attr set $LAYER/ns/$d/m$i.md kind string note || fail "iso-attr-$fs"
+            $BIN/moobfs-attr set $LAYER/ns/$d/m$i.md namespace string $d || fail "iso-ns-$fs"
+        done
+    done
+    chown -R 1001:1001 $LAYER/ns/a && chmod 0700 $LAYER/ns/a || fail "iso-chown-a-$fs"
+    chown -R 1002:1002 $LAYER/ns/b && chmod 0700 $LAYER/ns/b || fail "iso-chown-b-$fs"
+    chmod -R a+rX $LAYER/ns/shared && chmod 0755 $LAYER/ns $LAYER/ns/shared || fail "iso-shared-$fs"
+    chmod 0755 $LAYER || fail "iso-root-mode-$fs"   # QUERY needs an open descriptor of the root
+    for u in 1001 1002; do
+        $BIN/query --uid $u $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-$u-$fs"
+        $BIN/moobfs-index --uid $u $LOWER kind eq string note > /tmp/o.txt || fail "iso-oracle-$u-$fs"
+        cmp -s /tmp/k.txt /tmp/o.txt || { echo "kernel:"; cat /tmp/k.txt; echo "oracle:"; cat /tmp/o.txt; fail "iso-mismatch-$u-$fs"; }
+        [ "$(wc -l < /tmp/k.txt)" -eq 6 ] || fail "iso-count-$u-$fs"
+        other=$([ $u = 1001 ] && echo b || echo a)
+        grep -q "ns/$other/" /tmp/k.txt && fail "iso-leak-$u-$fs"
+        grep -q "ns/shared/" /tmp/k.txt || fail "iso-shared-missing-$u-$fs"
+    done
+    $BIN/query $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-root-$fs"
+    [ "$(wc -l < /tmp/k.txt)" -eq 9 ] || fail "iso-root-count-$fs"
+    # many candidates, few authorized: results and counts must stay exact beyond one chunk
+    mkdir -p $LAYER/ns/bulk && chmod 0700 $LAYER/ns/bulk || fail "iso-bulk-$fs"
+    for i in $(seq 1 600); do : > $LAYER/ns/bulk/f$i; done
+    $BIN/moobfs-attr set $LAYER/ns/bulk/f1 kind string note >/dev/null || fail "iso-bulk-attr-$fs"
+    for i in $(seq 2 600); do setfattr -n user.moob.kind -v "$(printf '\001note')" $LAYER/ns/bulk/f$i 2>/dev/null || $BIN/moobfs-attr set $LAYER/ns/bulk/f$i kind string note || fail "iso-bulk-attr-$fs"; done
+    chown -R 1002:1002 $LAYER/ns/bulk || fail "iso-bulk-chown-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "iso-bulk-query-$fs"
+    [ "$(wc -l < /tmp/k.txt)" -eq 6 ] || fail "iso-bulk-count-$fs"
+    $BIN/moobfs-index --uid 1001 $LOWER kind eq string note > /tmp/o.txt || fail "iso-bulk-oracle-$fs"
+    cmp -s /tmp/k.txt /tmp/o.txt || fail "iso-bulk-mismatch-$fs"
+    rm -rf $LAYER/ns/bulk || fail "iso-bulk-rm-$fs"
+    # changing the attribute never grants access; changing permissions does, immediately
+    $BIN/moobfs-attr set $LAYER/ns/b/m1.md namespace string a || fail "iso-reattr-$fs"
+    $BIN/query --uid 1001 $LAYER namespace eq string a > /tmp/k.txt || fail "iso-query-reattr-$fs"
+    grep -q "ns/b/" /tmp/k.txt && fail "iso-attr-grants-$fs"
+    chmod 0755 $LAYER/ns/b && chmod a+r $LAYER/ns/b/m1.md || fail "iso-chmod-$fs"
+    $BIN/query --uid 1001 $LAYER namespace eq string a > /tmp/k.txt || fail "iso-query-chmod-$fs"
+    grep -q "ns/b/m1.md" /tmp/k.txt || fail "iso-perm-not-seen-$fs"
+    grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-perm-overreach-$fs"
+    umount $LAYER || fail "iso-umount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "iso-remount-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-remount-$fs"
+    grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-leak-remount-$fs"
+    # ACLs: QUERY must agree with open() under the same uid when ACLs grant or deny
+    chmod 0700 $LAYER/ns/b && chmod 0600 $LAYER/ns/b/m1.md || fail "acl-reset-$fs"
+    $TOOLS/setfacl -m u:1001:x $LAYER/ns/b && $TOOLS/setfacl -m u:1001:r $LAYER/ns/b/m2.md || fail "acl-set-$fs"
+    $BIN/query --uid 1001 $LAYER open ns/b/m2.md | grep -q ': ok' || fail "acl-open-grant-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "acl-query-$fs"
+    grep -q 'ns/b/m2.md' /tmp/k.txt || fail "acl-grant-not-seen-$fs"
+    grep -q 'ns/b/m1.md' /tmp/k.txt && fail "acl-overreach-$fs"
+    $TOOLS/setfacl -m u:1001:- $LAYER/ns/shared/m1.md || fail "acl-deny-$fs"
+    $BIN/query --uid 1001 $LAYER open ns/shared/m1.md | grep -q 'Permission denied' || fail "acl-open-deny-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "acl-query2-$fs"
+    grep -q 'ns/shared/m1.md' /tmp/k.txt && fail "acl-deny-leak-$fs"
+    $TOOLS/setfacl -b $LAYER/ns/b $LAYER/ns/b/m2.md $LAYER/ns/shared/m1.md || fail "acl-clear-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "acl-query3-$fs"
+    grep -q 'ns/b/m2.md' /tmp/k.txt && fail "acl-clear-leak-$fs"
+    grep -q 'ns/shared/m1.md' /tmp/k.txt || fail "acl-clear-missing-$fs"
+    # identity (spec-m3 §2): same id across namespaces is normal, on two inodes in one namespace is an error
+    for f in ns/a/m1.md ns/shared/m1.md; do $BIN/moobfs-attr set $LAYER/$f memory_id string id-1 || fail "id-set-$fs"; done
+    $BIN/moobfs-attr set $LAYER/ns/a/m1.md namespace string a && $BIN/moobfs-attr set $LAYER/ns/shared/m1.md namespace string shared || fail "id-ns-$fs"
+    $BIN/moobfs-check $LOWER > /tmp/check.json || { cat /tmp/check.json; fail "id-check-normal-$fs"; }
+    grep -q '"same_id_other_namespace": 1' /tmp/check.json || fail "id-cross-count-$fs"
+    ln $LAYER/ns/a/m1.md $LAYER/ns/a/link1.md 2>/dev/null && { $BIN/moobfs-check $LOWER > /tmp/check.json || fail "id-hardlink-flagged-$fs"; rm $LAYER/ns/a/link1.md; }
+    $BIN/moobfs-attr set $LAYER/ns/a/m2.md memory_id string id-1 && $BIN/moobfs-attr set $LAYER/ns/a/m2.md namespace string a || fail "id-dup-set-$fs"
+    $BIN/moobfs-check $LOWER > /tmp/check.json; [ $? -eq 2 ] || fail "id-dup-not-detected-$fs"
+    grep -q 'duplicate (namespace, memory_id)' /tmp/check.json || fail "id-dup-reason-$fs"
+    $BIN/moobfs-attr rm $LAYER/ns/a/m2.md memory_id || fail "id-dup-rm-$fs"
+    # mount contract: idmapped mounts and user-namespace mounts are refused by the VFS
+    $BIN/idmap idmap $LAYER || fail "contract-idmap-$fs"
+    mkdir -p /tmp/userns-mnt && $BIN/idmap userns $LOWER /tmp/userns-mnt || fail "contract-userns-$fs"
+    # concurrency: chmod, rename and unlink+recreate racing with QUERY as uid 1001 for 5 s;
+    # answers must stay well formed, every result openable unless changed after the answer,
+    # and the final answer must equal the oracle
+    mkdir -p $LAYER/ns/race && chmod 0755 $LAYER/ns/race || fail "race-mkdir-$fs"
+    for i in $(seq 1 40); do echo r$i > $LAYER/ns/race/r$i.md; $BIN/moobfs-attr set $LAYER/ns/race/r$i.md kind string note >/dev/null || fail "race-attr-$fs"; done
+    chmod 0644 $LAYER/ns/race/*.md || fail "race-mode-$fs"
+    : > /tmp/race.go
+    ( n=0; while [ -e /tmp/race.go ]; do
+          i=$(( n % 40 + 1 )); n=$(( n + 1 ))
+          chmod 0600 $LAYER/ns/race/r$i.md 2>/dev/null; chmod 0644 $LAYER/ns/race/r$i.md 2>/dev/null
+          mv $LAYER/ns/race/r$i.md $LAYER/ns/race/t$i.md 2>/dev/null && mv $LAYER/ns/race/t$i.md $LAYER/ns/race/r$i.md 2>/dev/null
+          rm -f $LAYER/ns/race/r$i.md; echo r$i > $LAYER/ns/race/r$i.md; $BIN/moobfs-attr set $LAYER/ns/race/r$i.md kind string note >/dev/null 2>&1
+          [ $(( n % 7 )) -eq 0 ] && { mv $LAYER/ns/race $LAYER/ns/race2 2>/dev/null; mv $LAYER/ns/race2 $LAYER/ns/race 2>/dev/null; }
+      done ) &
+    racer=$!
+    $BIN/query --uid 1001 $LAYER race 5 | tee /tmp/race.txt || { rm -f /tmp/race.go; wait $racer; fail "race-query-$fs"; }
+    rm -f /tmp/race.go; wait $racer
+    grep -q '^race: [1-9]' /tmp/race.txt || fail "race-no-iterations-$fs"
+    chmod 0644 $LAYER/ns/race/*.md || fail "race-final-mode-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "race-final-query-$fs"
+    $BIN/moobfs-index --uid 1001 $LOWER kind eq string note > /tmp/o.txt || fail "race-final-oracle-$fs"
+    cmp -s /tmp/k.txt /tmp/o.txt || { diff /tmp/k.txt /tmp/o.txt; fail "race-final-mismatch-$fs"; }
+    rm -rf $LAYER/ns || fail "iso-cleanup-$fs"
+    echo "ISOLATION_PASS: $fs"
     mkdir -p $LAYER/fsx
     $BIN/fsx -q -N 5000 -S 1 $LAYER/fsx/file1 || fail "fsx-1-$fs"
     $BIN/fsx -q -N 3000 -S 2 -r 512 -w 512 $LAYER/fsx/file2 || fail "fsx-2-$fs"
