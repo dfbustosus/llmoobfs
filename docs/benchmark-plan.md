@@ -104,6 +104,9 @@ de montagem, tempo até o índice responder, integridade após queda.
 
 ## Ferramentas
 
+Desenho detalhado dos programas, do dataset, do esquema SQLite dos baselines e dos testes do
+próprio harness: [benchmark-harness.md](benchmark-harness.md).
+
 - Harness próprio em C para as cargas (determinístico, sem dependências), reutilizando
   `tests/query.c` e `tools/moobfs-index`.
 - `fio` apenas para calibrar o dispositivo da VM antes das cargas.

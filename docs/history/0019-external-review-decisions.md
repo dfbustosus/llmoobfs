@@ -53,3 +53,12 @@ medição de W2 e W3; revisão lógica e histórico mantidos no cliente, cursor 
 se o M4 justificar; cargas W1 a W9, escalas S1 a S6, perfis de 3, 8 e 16 atributos,
 aquecimento, repetições, ordem alternada, fórmulas de amplificação de escrita e pontos de
 saturação do índice. `docs/spec-m3.md` e `docs/benchmark-plan.md` reescritos de acordo.
+
+## Adendo: harness especificado
+
+Pesquisa de ferramentas de benchmark de metadados: `mdtest` e `fs_mark` reportam vazão, não
+latência por chamada, e não cobrem xattr; `filebench` parado; `fio` só para o caminho de dados;
+`mdbench` e MDWorkbench reportam latência mas sem xattr nem consulta. Decisão: harness próprio
+em C sem dependências, com validação de equivalência pelo oráculo e gate de `EXPLAIN QUERY
+PLAN` nos baselines SQLite. Especificado em `docs/benchmark-harness.md`, incluindo os testes do
+próprio harness e o alvo `make bench-smoke`.

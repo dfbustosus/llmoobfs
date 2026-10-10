@@ -125,7 +125,8 @@ development. KASAN/lockdep kernel validation and performance benchmarks are pend
   mature filesystem ([ADR-0007](docs/decisions/0007-stacked-memory-layer.md)), reusing
   [kernel infrastructure](docs/kernel-infrastructure.md) instead of rebuilding it.
 - [M3 specification](docs/spec-m3.md) (proposal): memory identity, agent and namespace isolation,
-  provenance, a change cursor and batch reads, all on the v1 UAPI; [M4 benchmark plan](docs/benchmark-plan.md).
+  provenance, a change cursor and batch reads, all on the v1 UAPI; [M4 benchmark plan](docs/benchmark-plan.md) and
+  [harness specification](docs/benchmark-harness.md).
 - [Original full MVP proposal](docs/native-mvp.md), in Portuguese; its write interface is superseded by ADR-0007.
 - [Architecture decisions](docs/decisions/), [technical journal](docs/history/) and
   [free-software ecosystem survey](docs/ecosystem.md).
