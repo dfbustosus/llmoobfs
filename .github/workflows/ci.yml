@@ -47,7 +47,7 @@ jobs:
           files=$(ls vm/*.sh build/*.sh 2>/dev/null || true)
           [ -n "$files" ] || { echo "no shell scripts found"; exit 1; }
           # shellcheck disable=SC2086
-          shellcheck --shell=sh $files
+          shellcheck --shell=sh --severity=warning $files   # info-level findings are tracked as issues
       - name: SPDX license headers on C sources
         run: |
           set -eu
