@@ -342,7 +342,7 @@ check_mark() {   # replay up to a mark; memories 1..$2 must be whole, later ones
     done
     $BIN/query $LAYER kind eq string decision > /tmp/k.txt || return 1
     [ "$(wc -l < /tmp/k.txt)" -eq "$2" ] || return 1
-    ls -A $LOWER | grep -q '^\.tmp\.' && echo "note: a temporary file survived the crash at $1 (allowed)"
+    for leftover in "$LOWER"/.tmp.*; do [ -e "$leftover" ] && echo "note: a temporary file survived the crash at $1 (allowed)"; break; done
     umount $LAYER && umount $LOWER
 }
 check_mark mkfs 0 || fail lw-check-mkfs
