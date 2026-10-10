@@ -4,18 +4,18 @@ Data: 2026-10-10, America/Sao_Paulo. Estado: **concluído e validado na VM de te
 sequência de rodadas descrita abaixo; mantido na íntegra como registro da investigação.
 
 ## Decisões desta etapa
-  
-  - Nenhum projeto externo de memória entra no critério do M2; todos entram no M4 como objetos
-    de benchmark. Especificação e ADR-0007 anotadas (ver registro 0014).
-  - Aceitação com git, SQLite em WAL e um cliente de memória próprio (convenção tmp + atributos
-    + fsync + rename + fsync do diretório), mais `dm-log-writes` e `dm-flakey`. O SQLite não faz
-    parte da arquitetura; é o cliente mais exigente disponível para um filesystem e verifica o
-    próprio conteúdo.
-  - O diagrama de fluxo do dado vai para o site junto com o plano.
-  - O histórico registra decisões, erros e hipóteses descartadas; perguntas e respostas de
-    esclarecimento não (regra ajustada em `AGENTS.md` em 2026-10-10).
-  
-  ## Harness da fase 2e
+
+- Nenhum projeto externo de memória entra no critério do M2; todos entram no M4 como objetos
+  de benchmark. Especificação e ADR-0007 anotadas (ver registro 0014).
+- Aceitação com git, SQLite em WAL e um cliente de memória próprio (convenção tmp + atributos
+  + fsync + rename + fsync do diretório), mais `dm-log-writes` e `dm-flakey`. O SQLite não faz
+  parte da arquitetura; é o cliente mais exigente disponível para um filesystem e verifica o
+  próprio conteúdo.
+- O diagrama de fluxo do dado vai para o site junto com o plano.
+- O histórico registra decisões, erros e hipóteses descartadas; perguntas e respostas de
+  esclarecimento não (regra ajustada em `AGENTS.md` em 2026-10-10).
+
+## Harness da fase 2e
 
 - `tests/third_party/log-writes/`: `replay-log` do xfstests vendorizado (commit `9b56b94`,
   2019-10-24, GPL-2.0) para reproduzir o log do `dm-log-writes` até uma marca.

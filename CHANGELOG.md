@@ -2,6 +2,10 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/security-roadmap.md`: proposed list of security and robustness techniques for the layer
+  (threat model, fstests, syzkaller, hostile lower, static analysis, disclosure policy,
+  hardening, resource limits, module signing), with current state and sources; linked from
+  the roadmap. Nothing implemented yet.
 - Phase 2e: acceptance with git, SQLite (WAL, concurrent processes) and an own memory client;
   power-loss replay with dm-log-writes and I/O error injection with dm-flakey. Two layer bugs
   found and fixed: stale lower dentry after unlink+recreate (lost SQLite WAL frames) and a

@@ -8,6 +8,7 @@ This is a sequence of research milestones, not a delivery schedule.
 | M1 — Native shared reads | Validated in local VM | Create image; mount; distinct inodes share physical bytes; malformed-image and read-only tests |
 | M1 hardening | Frozen as a completed experiment ([ADR-0007](docs/decisions/0007-stacked-memory-layer.md)); kept as regression | KASAN/lockdep VM, fuzzing, parser review, lifecycle/concurrency tests and kernel compatibility policy |
 | M2 — Stacked memory layer | All phases 2a–2e validated in local VM; M2 exit criteria met except full xfstests and KASAN/lockdep | [Spec](docs/spec-m2.md): native stacked filesystem over btrfs/XFS/ext4 ([ADR-0007](docs/decisions/0007-stacked-memory-layer.md)); typed xattr attributes, in-memory index and `QUERY`, reflink delegated to the lower filesystem; xfstests, fsx, dm-log-writes and a real client (git + SQLite + ai-memory) as exit criteria |
+| Security and robustness (cross-cutting) | Proposed | [Security roadmap](docs/security-roadmap.md): threat and credential model (ADR), fstests, syzkaller over the ioctls and `setxattr`, lower directory treated as hostile input, static analysis in CI, disclosure policy, runtime hardening, resource limits, module signing |
 | M3 — Revisions and snapshots | Proposed | Stable identities, retained revisions, garbage-collection rules and isolation tests |
 | M4 — Agent experiment | Proposed | Integrate a memory workflow and measure utility, space, latency and operational cost against explicit baselines |
 
