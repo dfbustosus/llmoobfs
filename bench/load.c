@@ -1,0 +1,300 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * bench/load: replays a manifest against a target directory and records the
+ * latency of every call (docs/benchmark-harness.md §2, §5). Linux only.
+ *
+ *   load --manifest FILE --target DIR --workload W1|W2|W3|W4 --out PREFIX
+ *        [--procs N] [--queries FILE] [--root DIR]
+ *
+ * W1 creates each memory: write <path>.tmp, set every attribute, fsync, rename
+ *    to <path>, fsync the parent directory (the client convention of spec-m3).
+ * W2 opens and reads every memory by its path.
+ * W3 issues each line of --queries (name op type value, up to 4 terms) as one
+ *    MOOB_IOC_QUERY on --root (default: --target), limit 4096; result = count,
+ *    or -EOVERFLOW when the answer was truncated.
+ * W4 rewrites "score" and then sets and removes a "scratch" attribute per memory.
+ * Lines are split among --procs processes by index modulo N. One record file
+ * per process: <PREFIX>.<proc>.rec, 32-byte records (struct bench_rec).
+ * Errors are recorded with result = -errno and never counted as latencies.
+ */
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
+#include <inttypes.h>
+#include <sys/stat.h>
+#include <sys/xattr.h>
+#include <sys/wait.h>
+#include <sys/ioctl.h>
+#include "common.h"
+#include "../include/moobfs_attr.h"
+#include "../tools/query-common.h"
+
+static const char *manifest, *target, *out, *queries, *root;
+static int workload, nprocs = 1;
+static FILE *recf;
+static unsigned proc_id;
+
+static uint64_t now_ns(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static void record(int op, uint64_t start, int32_t result)
+{
+	struct bench_rec r = { .workload = (uint32_t)workload, .op = (uint32_t)op, .start_ns = start,
+			       .dur_ns = now_ns() - start, .proc = proc_id, .result = result };
+
+	fwrite(&r, sizeof r, 1, recf);
+}
+
+/* Encodes one manifest attribute as the typed xattr value; returns length or -1. */
+static int encode(const struct bench_attr *a, ma_u8 *buf, size_t cap)
+{
+	size_t n;
+
+	switch (a->type) {
+	case 's':
+		n = strlen(a->value);
+		if (n + 1 > cap) return -1;
+		buf[0] = MOOB_T_STRING; memcpy(buf + 1, a->value, n); return (int)(n + 1);
+	case 'i': buf[0] = MOOB_T_INT64; moob_attr_put64(buf + 1, (ma_u64)strtoll(a->value, NULL, 10)); return 9;
+	case 't': buf[0] = MOOB_T_TIME; moob_attr_put64(buf + 1, (ma_u64)strtoll(a->value, NULL, 10)); return 9;
+	case 'd': {
+		double d = strtod(a->value, NULL); ma_u64 bits;
+		memcpy(&bits, &d, 8); buf[0] = MOOB_T_DOUBLE; moob_attr_put64(buf + 1, bits); return 9;
+	}
+	case 'b': buf[0] = MOOB_T_BOOL; buf[1] = (ma_u8)(a->value[0] == '1'); return 2;
+	case 'r':
+		if (cap < 257) return -1;
+		buf[0] = MOOB_T_RAW; bench_fill(buf + 1, 256, strtoull(a->value, NULL, 10)); return 257;
+	}
+	return -1;
+}
+
+static int set_attr(const char *path, const struct bench_attr *a)
+{
+	char name[MOOB_ATTR_PREFIX_LEN + 65];
+	ma_u8 buf[MOOB_ATTR_VALUE_MAX + 1];
+	int n = encode(a, buf, sizeof buf);
+
+	if (n < 0) { errno = EINVAL; return -1; }
+	snprintf(name, sizeof name, "%s%s", MOOB_ATTR_PREFIX, a->name);
+	return setxattr(path, name, buf, (size_t)n, 0);
+}
+
+static int mkdirs(const char *full)
+{
+	char tmp[4096], *p;
+
+	snprintf(tmp, sizeof tmp, "%s", full);
+	for (p = tmp + 1; *p; p++) {
+		if (*p != '/') continue;
+		*p = 0;
+		if (mkdir(tmp, 0755) && errno != EEXIST) return -1;
+		*p = '/';
+	}
+	return 0;
+}
+
+static int w1_create(const struct bench_line *l, uint64_t content_seed)
+{
+	char full[4096], tmp[4112], dir[4096], *slash;
+	uint8_t *buf;
+	int fd, dfd, i, err = 0;
+	uint64_t t0;
+
+	snprintf(full, sizeof full, "%s/%s", target, l->path);
+	snprintf(tmp, sizeof tmp, "%s.tmp", full);
+	snprintf(dir, sizeof dir, "%s", full);
+	slash = strrchr(dir, '/'); *slash = 0;
+	if (mkdirs(full)) return -1;
+	buf = malloc(l->size);
+	if (!buf) return -1;
+	bench_fill(buf, l->size, content_seed);
+	t0 = now_ns();
+	fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0) { err = -errno; goto out; }
+	if (write(fd, buf, l->size) != (ssize_t)l->size) { err = -errno; close(fd); goto out; }
+	for (i = 0; i < l->nattrs; i++)
+		if (set_attr(tmp, &l->attrs[i])) { err = -errno; break; }
+	if (!err && fsync(fd)) err = -errno;
+	close(fd);
+	if (!err && rename(tmp, full)) err = -errno;
+	if (!err) {
+		dfd = open(dir, O_RDONLY | O_DIRECTORY);
+		if (dfd < 0 || fsync(dfd)) err = -errno;
+		if (dfd >= 0) close(dfd);
+	}
+out:
+	record(BENCH_OP_CREATE, t0, err ? err : (int32_t)l->size);
+	free(buf);
+	return err ? -1 : 0;
+}
+
+static int w2_read(const struct bench_line *l)
+{
+	char full[4096];
+	static uint8_t buf[65536];
+	ssize_t n, total = 0;
+	int fd, err = 0;
+	uint64_t t0 = now_ns();
+
+	snprintf(full, sizeof full, "%s/%s", target, l->path);
+	fd = open(full, O_RDONLY);
+	if (fd < 0) err = -errno;
+	else {
+		while ((n = read(fd, buf, sizeof buf)) > 0) total += n;
+		if (n < 0) err = -errno;
+		close(fd);
+	}
+	record(BENCH_OP_READ, t0, err ? err : (int32_t)total);
+	return err ? -1 : 0;
+}
+
+static int w4_attrs(const struct bench_line *l)
+{
+	char full[4096];
+	struct bench_attr a = { .name = "score", .type = 'i' };
+	struct bench_attr sc = { .name = "scratch", .type = 'b', .value = "1" };
+	int i, err = 0;
+	uint64_t t0;
+
+	snprintf(full, sizeof full, "%s/%s", target, l->path);
+	for (i = 0; i < l->nattrs; i++)
+		if (!strcmp(l->attrs[i].name, "score")) {
+			snprintf(a.value, sizeof a.value, "%lld", strtoll(l->attrs[i].value, NULL, 10) + 1);
+			break;
+		}
+	if (i == l->nattrs) strcpy(a.value, "1");
+	t0 = now_ns();
+	if (set_attr(full, &a)) err = -errno;
+	record(BENCH_OP_ATTR_SET, t0, err ? err : 0);
+	t0 = now_ns();
+	err = 0;
+	if (set_attr(full, &sc) || removexattr(full, MOOB_ATTR_PREFIX "scratch")) err = -errno;
+	record(BENCH_OP_ATTR_RM, t0, err ? err : 0);
+	return err ? -1 : 0;
+}
+
+static int w3_queries(void)
+{
+	FILE *qf = fopen(queries, "r");
+	char line[8192];
+	struct moob_query q;
+	struct moob_query_result *res;
+	int fd, nq = 0;
+
+	if (!qf) { perror(queries); return -1; }
+	fd = open(root ? root : target, O_RDONLY | O_DIRECTORY);
+	if (fd < 0) { perror("open root"); fclose(qf); return -1; }
+	res = calloc(MOOB_QUERY_MAX_LIMIT, sizeof *res);
+	if (!res) { close(fd); fclose(qf); return -1; }
+	while (fgets(line, sizeof line, qf)) {
+		char *argv[32], *save = NULL, *tok;
+		int argc = 0, n;
+		uint64_t t0;
+		int32_t result;
+
+		if (line[0] == '#' || line[0] == '\n') continue;
+		if ((nq++ % nprocs) != (int)proc_id) continue;
+		for (tok = strtok_r(line, " \t\n", &save); tok && argc < 32; tok = strtok_r(NULL, " \t\n", &save))
+			argv[argc++] = tok;
+		memset(&q, 0, sizeof q);
+		n = parse_terms(argc, argv, 0, q.terms);
+		if (n < 1) { fprintf(stderr, "load: bad query line %d\n", nq); continue; }
+		q.version = MOOB_UAPI_VERSION; q.nterms = (__u32)n; q.limit = MOOB_QUERY_MAX_LIMIT;
+		q.results = (__u64)(uintptr_t)res;
+		t0 = now_ns();
+		if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
+		else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
+		record(BENCH_OP_QUERY, t0, result);
+	}
+	free(res); close(fd); fclose(qf);
+	return 0;
+}
+
+static int run_proc(void)
+{
+	FILE *mf;
+	char recname[4096], *line = NULL;
+	size_t cap = 0;
+	uint64_t *seeds = NULL;
+	size_t nseeds = 0, capseeds = 0, idx = 0;
+	int failures = 0;
+
+	snprintf(recname, sizeof recname, "%s.%u.rec", out, proc_id);
+	recf = fopen(recname, "wb");
+	if (!recf) { perror(recname); return 1; }
+	if (workload == 3) {
+		int r = w3_queries();
+		fclose(recf);
+		return r ? 1 : 0;
+	}
+	mf = fopen(manifest, "r");
+	if (!mf) { perror(manifest); return 1; }
+	while (getline(&line, &cap, mf) > 0) {
+		struct bench_line l;
+		uint64_t cseed;
+
+		if (line[0] == '#') continue;
+		if (bench_parse_line(line, &l)) { fprintf(stderr, "load: bad manifest line %zu\n", idx + 1); return 1; }
+		/* every process tracks every content seed so duplicates resolve regardless of the owner */
+		if (nseeds == capseeds) {
+			capseeds = capseeds ? capseeds * 2 : 1024;
+			seeds = realloc(seeds, capseeds * sizeof *seeds);
+			if (!seeds) return 1;
+		}
+		cseed = l.dup_of >= 0 && (size_t)l.dup_of < nseeds ? seeds[l.dup_of] : l.seed;
+		seeds[nseeds++] = cseed;
+		if ((idx++ % (size_t)nprocs) != proc_id) continue;
+		switch (workload) {
+		case 1: if (w1_create(&l, cseed)) failures++; break;
+		case 2: if (w2_read(&l)) failures++; break;
+		case 4: if (w4_attrs(&l)) failures++; break;
+		}
+	}
+	free(line); free(seeds); fclose(mf); fclose(recf);
+	if (failures)
+		fprintf(stderr, "load: proc %u: %d failed operations (recorded as errors)\n", proc_id, failures);
+	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	int a, i, status, rc = 0;
+
+	for (a = 1; a + 1 < argc; a += 2) {
+		if (!strcmp(argv[a], "--manifest")) manifest = argv[a + 1];
+		else if (!strcmp(argv[a], "--target")) target = argv[a + 1];
+		else if (!strcmp(argv[a], "--out")) out = argv[a + 1];
+		else if (!strcmp(argv[a], "--queries")) queries = argv[a + 1];
+		else if (!strcmp(argv[a], "--root")) root = argv[a + 1];
+		else if (!strcmp(argv[a], "--procs")) nprocs = atoi(argv[a + 1]);
+		else if (!strcmp(argv[a], "--workload") && argv[a + 1][0] == 'W') workload = atoi(argv[a + 1] + 1);
+		else { fprintf(stderr, "load: unknown option %s\n", argv[a]); return 64; }
+	}
+	if (a != argc || !target || !out || nprocs < 1 || nprocs > 1024 ||
+	    !(workload == 1 || workload == 2 || workload == 3 || workload == 4) ||
+	    (workload == 3 ? !queries : !manifest)) {
+		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n");
+		return 64;
+	}
+	if (nprocs == 1) { proc_id = 0; return run_proc(); }
+	for (i = 0; i < nprocs; i++) {
+		pid_t pid = fork();
+
+		if (pid < 0) { perror("fork"); return 1; }
+		if (!pid) { proc_id = (unsigned)i; _exit(run_proc()); }
+	}
+	for (i = 0; i < nprocs; i++)
+		if (wait(&status) > 0 && (!WIFEXITED(status) || WEXITSTATUS(status))) rc = 1;
+	return rc;
+}

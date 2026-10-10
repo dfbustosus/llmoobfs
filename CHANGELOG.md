@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-10-10
 
+- `bench/`: first slice of the M4 harness: deterministic manifest generator, loader for W1-W4
+  with per-call latency records, report with percentiles and dispersion, `make bench-smoke` in
+  CI. Correctness only; no performance numbers.
 - `docs/project-review-2026-10-10.md`: implementation and roadmap review, static QUERY
   correctness findings, configurations requiring Linux reproduction, and a proposed
   focused benchmark and agent-memory demonstration. Analysis only; no code fixes.

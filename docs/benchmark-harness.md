@@ -1,9 +1,15 @@
 # Harness de benchmark do M4 — especificação
 
-Estado: proposta (2026-10-10). Complementa [benchmark-plan.md](benchmark-plan.md), que define
-perguntas, baselines, cargas, escalas, métricas e método. Este documento define os programas,
-formatos e testes que tornam o plano executável e reproduzível por terceiros. Nada aqui está
-implementado.
+Estado: em implementação (2026-10-10). Complementa [benchmark-plan.md](benchmark-plan.md), que
+define perguntas, baselines, cargas, escalas, métricas e método. Este documento define os
+programas, formatos e testes que tornam o plano executável e reproduzível por terceiros.
+
+Implementado em `bench/` (registro 0025): `gen` (manifesto determinístico), `load` (W1, W2, W3,
+W4 com registro de latência por chamada), `report.py` (percentis, dispersão, CSV e JSON) e
+`smoke.sh` (`make bench-smoke`, correção do próprio harness em diretório comum, no CI). Ainda
+não implementados: `sqlbase`, `equiv`, `mountclock` (W6/W7), W5, W8 e W9 em `load`, e `run.sh`.
+Desvio registrado: o perfil mínimo passou a chamar-se 6, não 3, porque o §3 fixa seis atributos
+em todo perfil; perfis válidos são 6, 8 e 16. Nenhum número de desempenho foi produzido.
 
 ## 1. Por que um harness próprio
 
