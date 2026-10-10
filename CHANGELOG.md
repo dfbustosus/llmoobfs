@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/spec-m3.md`: M3 specification proposal (identity, isolation, provenance, change cursor,
+  batch reads).
 - `docs/benchmark-plan.md`: M4 benchmark methodology, baselines and the real clients used as
   workloads; M3 scope gains agent/namespace isolation, batch reads and a change cursor.
 - `docs/security-roadmap.md`: proposed list of security and robustness techniques for the layer
