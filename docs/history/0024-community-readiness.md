@@ -166,3 +166,12 @@ contagens de caracteres dos títulos para SERP. Nenhum teste de kernel foi execu
 Próximo passo: revisar os textos em inglês no PR, criar a pré-release `v0.1.0-experimental`
 quando o mantenedor decidir (e então substituir "no release yet" pela referência à tag) e, após
 o merge, confirmar que o Pages serve `faq.html`, `robots.txt` e `sitemap.xml`.
+
+## Nota de 2026-10-10: falha intermitente do harness no KASAN do PR 3
+
+Execução 38087839385 falhou em `fl-remove`: `dmsetup remove fl` devolveu "Device or resource
+busy" logo após o `umount` do dispositivo `dm-flakey`, com udev ativo no runner do GitHub
+(mensagem "Udev is running and DM_DISABLE_UDEV ... is set"). Nenhum diagnóstico de kernel;
+a mesma suíte passou em `main` e na branch da fase 3b. Causa provável: corrida entre o udev e a
+remoção do dispositivo. Correção: `dmsetup remove --retry` para os dois dispositivos (`lw` e
+`fl`); execução refeita pelo gatilho de pull request.
