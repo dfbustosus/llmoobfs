@@ -5,6 +5,7 @@ Leia `README.md`, `docs/history/README.md`, o registro de sessão mais recente e
 ## Histórico obrigatório
 
 - Registre pedidos e resultados em `docs/history/`, como sínteses técnicas factuais: objetivo, decisões, alternativas, justificativas resumidas, mudanças, evidências, limitações e próximos passos.
+- Registre decisões, inclusive as que nascem de perguntas do usuário, mas não as perguntas em si nem as respostas de esclarecimento. Erros encontrados com sua correção, hipóteses descartadas e experimentos que falharam continuam sendo registrados. Uma investigação em andamento tem registro próprio, marcado como em andamento e atualizado a cada rodada.
 - Documente decisões arquiteturais em `docs/decisions/` com IDs sequenciais. Preserve decisões antigas; uma mudança deve apontar para a decisão que substitui.
 - Preserve especificações anteriores. Identifique claramente proposta, implementação e comportamento efetivamente testado.
 - Atualize `CHANGELOG.md` para alterações relevantes. Guarde comandos reproduzíveis e resumos de resultados; nunca apresente teste não executado como aprovado.

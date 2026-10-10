@@ -37,7 +37,9 @@ def visit(m):
         order.append(m)
 # Filesystems request the crc32c shash through the crypto API; modules.dep does not record that.
 for m in ('kernel/crypto/crc32c_generic.ko.xz', 'kernel/drivers/block/virtio_blk.ko.xz',
-          'kernel/fs/ext4/ext4.ko.xz', 'kernel/fs/btrfs/btrfs.ko.xz', 'kernel/fs/xfs/xfs.ko.xz'):
+          'kernel/fs/ext4/ext4.ko.xz', 'kernel/fs/btrfs/btrfs.ko.xz', 'kernel/fs/xfs/xfs.ko.xz',
+          'kernel/drivers/md/dm-mod.ko.xz', 'kernel/drivers/md/dm-log-writes.ko.xz',
+          'kernel/drivers/md/dm-flakey.ko.xz'):
     visit(m)
 out = Path(sys.argv[2])
 with open(out / 'order', 'w') as f:
@@ -55,6 +57,26 @@ truncate -s 256M build/vm/lower-btrfs.img
 mkfs.btrfs -q -f -L moob-lower build/vm/lower-btrfs.img
 truncate -s 300M build/vm/lower-xfs.img
 mkfs.xfs -q -f -L moob-lower build/vm/lower-xfs.img
+# Blank disks for the power-loss test: one to be formatted under dm-log-writes, one for its log.
+rm -f build/vm/scratch.img build/vm/log.img
+truncate -s 64M build/vm/scratch.img
+truncate -s 64M build/vm/log.img
+# Dynamically linked clients and tools for the acceptance tests, with their libraries.
+stage_bin() {
+    cp -L "$1" "$STAGE/bin/$(basename "$1")"
+    ldd "$1" | awk '/=> \//{print $3} /^[[:space:]]*\/(lib|usr)/{print $1}' | sort -u | while read -r lib; do
+        mkdir -p "$STAGE$(dirname "$lib")"
+        cp -L "$lib" "$STAGE$lib"
+    done
+}
+stage_bin /usr/bin/git
+stage_bin /usr/bin/sqlite3
+stage_bin /usr/sbin/dmsetup
+stage_bin /usr/sbin/mke2fs
+stage_bin /usr/sbin/e2fsck
+mkdir -p "$STAGE/usr/lib/git-core"
+ln -s /bin/git "$STAGE/usr/lib/git-core/git"
+gcc -static -O2 tests/third_party/log-writes/replay-log.c tests/third_party/log-writes/log-writes.c -o "$STAGE/replay-log"
 python3 - "$KERNEL" "$STAGE/loop.ko" <<'PY'
 import lzma
 from pathlib import Path
@@ -67,6 +89,7 @@ gcc -static -O2 -Wall -Wextra -Werror tests/layer.c -o "$STAGE/layer"
 make attr-tools BUILD=build/linux CFLAGS="-O2 -g -static"
 cp build/linux/moobfs-attr build/linux/moobfs-check build/linux/moobfs-index "$STAGE/"
 gcc -static -O2 -Wall -Wextra -Werror -Iinclude tests/query.c common/attr.c -o "$STAGE/query"
+gcc -static -O2 -Wall -Wextra -Werror tests/ipc.c -o "$STAGE/ipc"
 gcc -static -O2 -Itests/third_party/fsx tests/third_party/fsx/fsx.c -o "$STAGE/fsx"
 MOOB_BUILD_DIR=build/linux python3 tests/test_images.py --fixtures "$STAGE/data"
 build/linux/fsck.moobfs "$STAGE/data/shared.img" > build/vm/image-report.json
@@ -88,6 +111,8 @@ timeout 600 qemu-system-x86_64 \
     -drive file=build/vm/lower-ext4.img,format=raw,if=virtio \
     -drive file=build/vm/lower-btrfs.img,format=raw,if=virtio \
     -drive file=build/vm/lower-xfs.img,format=raw,if=virtio \
+    -drive file=build/vm/scratch.img,format=raw,if=virtio \
+    -drive file=build/vm/log.img,format=raw,if=virtio \
     -kernel "/boot/vmlinuz-$KERNEL" -initrd build/vm/initramfs.cpio.gz \
     -append 'console=ttyS0 rdinit=/init panic=-1 loglevel=4' \
     -nographic -no-reboot -nic none > build/vm/console.log 2>&1
@@ -97,4 +122,5 @@ cat build/vm/console.log
 test "$RESULT" -eq 0
 grep -q '^MOOBFS_VM_PASS:' build/vm/console.log
 grep -q '^MOOBFS_LAYER_PASS:' build/vm/console.log
+grep -q '^MOOBFS_ACCEPTANCE_PASS:' build/vm/console.log
 ! grep -q '^MOOBFS_VM_FAIL:' build/vm/console.log
