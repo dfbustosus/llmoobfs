@@ -1,11 +1,29 @@
 # MoobFS
 
-**Filesystem nativo experimental para Linux, explorando memória persistente de LLMs.**
+**Filesystem nativo experimental para Linux, voltado à memória e ao contexto de LLMs.**
 
 [English](README.md) · [Site](https://studiomoob.github.io/llmoobfs/) · [Contribuição](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
-O primeiro marco já cria uma imagem, monta com um módulo nativo e lê dois arquivos
-com inodes diferentes apontando para o mesmo conteúdo físico. Não usa FUSE.
+## Objetivo do projeto
+
+O MoobFS busca oferecer uma base de armazenamento, no nível de filesystem, para
+memória persistente e contexto consumidos por agentes baseados em LLMs. A intenção
+é preservar memórias como observações, decisões e registros de tarefas entre
+sessões, compartilhar conteúdo repetido e, futuramente, manter revisões que os
+agentes possam recuperar para compor seu contexto.
+
+O filesystem armazena e expõe as memórias como arquivos. A aplicação do agente
+seleciona o material relevante e monta o contexto enviado à LLM. Recuperação
+semântica e montagem de contexto ainda precisam ser desenhadas e integradas;
+o MoobFS não fornece essas capacidades hoje nem amplia a janela de contexto do modelo.
+
+## Implementado hoje: o marco M1 somente leitura
+
+O primeiro marco valida uma base técnica para esse objetivo: arquivos independentes
+podem compartilhar os mesmos bytes imutáveis. Uma ferramenta offline cria a imagem;
+o módulo nativo monta no Linux e lê dois arquivos com inodes diferentes apontando
+para o mesmo conteúdo físico. Não usa FUSE. O exemplo abaixo demonstra
+compartilhamento físico, não um fluxo completo de memória para agentes.
 
 ```text
 alpha.txt → inode 2 ─┐

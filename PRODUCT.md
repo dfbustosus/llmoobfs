@@ -12,7 +12,11 @@ the experiment and assess evidence before extending it.
 
 ## Product Purpose
 
-Explain MoobFS visually and provide a direct technical path to code, format,
+Position MoobFS first as an experimental native filesystem for persistent LLM
+memory and context. Explain that agent applications select memories and assemble
+context, while the filesystem stores and exposes them. Present read-only shared
+storage as the implemented M1 foundation, with retrieval and agent integration
+clearly marked as future work. Provide a direct technical path to code, format,
 validation and decisions. The user explicitly chose both presentation and technical
 documentation, rather than choosing only one.
 
@@ -28,6 +32,7 @@ status dashboards and visuals that imply unimplemented agent capabilities.
 
 ## Design Principles
 
+- Lead with LLM memory and context; explain shared bytes as the current foundation.
 - Show independent identities converging on shared bytes.
 - Put reproducibility one step from the explanation.
 - Separate tested implementation from future architecture.
