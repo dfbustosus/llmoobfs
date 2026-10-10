@@ -41,3 +41,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0021 — Auditoria de anterioridade e estratégia de distribuição](0021-originality-and-distribution.md)
 - [0022 — Avaliação de utilidade, proposta de valor e maturidade como critério de adoção](0022-value-assessment.md)
 - [0023 — Revisão de implementação, planos e próximo experimento](0023-project-review.md)
+- [0025 — M4: primeira fatia do harness de benchmark](0025-m4-harness-first-slice.md)
