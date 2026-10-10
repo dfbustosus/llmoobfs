@@ -1,0 +1,37 @@
+#!/bin/sh
+/bin/busybox --install -s /bin
+export PATH=/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /mnt/moob
+fail() { echo "MOOBFS_VM_FAIL: $*"; dmesg | tail -60; poweroff -f; sleep 60; }
+insmod /loop.ko || fail loop
+insmod /moobfs.ko || fail module
+mount -t moobfs -o loop,ro /data/shared.img /mnt/moob || fail mount
+/mounted /data/expected.bin || fail reads
+mount -o remount,rw /mnt/moob && fail writable-remount
+umount /mnt/moob || fail unmount
+mount -t moobfs -o loop,ro /data/shared.img /mnt/moob || fail remount
+/mounted /data/expected.bin || fail repeated-reads
+umount /mnt/moob || fail second-unmount
+device=$(losetup -f) || fail free-loop
+losetup "$device" /data/shared.img || fail loop-attach
+/mounted --reject-rw "$device" || fail writable-mount
+losetup -d "$device" || fail loop-detach
+mount -t moobfs -o loop,ro /data/edges.img /mnt/moob || fail edge-mount
+[ "$(wc -c < /mnt/moob/empty)" -eq 0 ] || fail empty
+[ "$(cat /mnt/moob/tiny)" = x ] || fail tiny
+[ "$(wc -c < /mnt/moob/maximum)" -eq 65536 ] || fail maximum
+cmp /mnt/moob/maximum /data/source-2 || fail maximum-content
+umount /mnt/moob || fail edge-unmount
+count=0
+for image in /data/bad-*.img; do
+    mount -t moobfs -o loop,ro "$image" /mnt/moob && fail "accepted $image"
+    count=$((count + 1))
+done
+[ "$count" -eq 15 ] || fail "bad fixture count $count"
+rmmod moobfs || fail unload
+if dmesg | grep -E 'BUG:|Oops:|WARNING:|Kernel panic|KASAN:'; then fail kernel-diagnostic; fi
+echo "MOOBFS_VM_PASS: shared extents, independent inodes, reads, readonly, remount, 15 malformed images"
+poweroff -f
