@@ -12,9 +12,8 @@ Do not post exploit details, credentials or real memory contents in a public iss
 For large or sensitive material, first arrange a suitable transfer method by email.
 
 We will investigate and coordinate a fix and disclosure when possible. This small
-project does not promise a response deadline or operate a bounty program. Private
-GitHub vulnerability reporting may also be used when the repository displays that
-option; email remains the documented contact.
+project does not promise a response deadline or operate a bounty program. You can also use [GitHub private vulnerability reporting](https://github.com/studiomoob/llmoobfs/security/advisories/new),
+which is enabled for this repository. Email remains an alternative contact.
 
 ## Current boundaries
 
