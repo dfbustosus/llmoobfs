@@ -55,3 +55,16 @@ A API de perfil comunitário reportou 100% dos critérios considerados por ela;
 isso não é certificação de segurança ou qualidade técnica. Os resumos permanentes
 ficam no Git; artifacts do CI têm retenção de 30 dias. O contato de segurança foi
 atualizado para incluir o canal privado do GitHub agora habilitado.
+
+## Adendo — proteção da branch e verificação pública
+
+A API confirmou `main` protegida com os checks `Tools and sanitizers` e
+`Native Linux VM`, branch atualizada antes de merge, PR obrigatório para quem não
+pode ignorar a regra e resolução de conversas. Force-push e exclusão desabilitados.
+Zero aprovações obrigatórias evita bloquear um projeto com um único mantenedor;
+a política de revisão continua em CONTRIBUTING.md. Administradores mantêm bypass
+(`enforce_admins: false`), uma exceção explícita, não proteção absoluta.
+
+A homepage, o guia e o CSS publicados responderam HTTP 200. A página pública foi
+aberta e verificada no navegador. A configuração de Pages exige HTTPS. Nenhuma
+mudança no código nativo ocorreu após o CI bem-sucedido mencionado acima.

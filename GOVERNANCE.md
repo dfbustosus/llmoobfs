@@ -16,3 +16,12 @@ must respect existing contributor rights.
 For behavior concerns use the conduct policy; for vulnerabilities use the security
 policy. Ordinary questions can use issues. Public discussions should remain public
 unless privacy or security calls for the documented private contact.
+
+## Repository controls
+
+The main branch requires pull requests, the tool/sanitizer and native-VM checks,
+an up-to-date branch and resolved review conversations for contributors subject
+to protection. Force pushes and deletion are disabled. No numeric approval quota
+is enforced while the project has a single maintainer; maintainers still review
+contributions. Administrators currently retain bypass for repository maintenance.
+GitHub Pages deploys the versioned static site from main through Actions.
