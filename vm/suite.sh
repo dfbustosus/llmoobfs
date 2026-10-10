@@ -117,6 +117,57 @@ run_lower() {
     umount $LAYER || fail "q-umount4-$fs"
     mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "q-remount-final-$fs"
     rm -rf $LAYER/r || fail "q-cleanup-$fs"
+    # isolation (M3 phase 3b): two users, two namespaces; QUERY as each user must equal the
+    # oracle run as that user, and must not reveal the other namespace, not even in counts
+    mkdir -p $LAYER/ns/a $LAYER/ns/b $LAYER/ns/shared || fail "iso-mkdir-$fs"
+    for d in a b shared; do
+        for i in 1 2 3; do
+            echo "secret $d $i" > $LAYER/ns/$d/m$i.md
+            chmod 0600 $LAYER/ns/$d/m$i.md || fail "iso-mode-$fs"
+            $BIN/moobfs-attr set $LAYER/ns/$d/m$i.md kind string note || fail "iso-attr-$fs"
+            $BIN/moobfs-attr set $LAYER/ns/$d/m$i.md namespace string $d || fail "iso-ns-$fs"
+        done
+    done
+    chown -R 1001:1001 $LAYER/ns/a && chmod 0700 $LAYER/ns/a || fail "iso-chown-a-$fs"
+    chown -R 1002:1002 $LAYER/ns/b && chmod 0700 $LAYER/ns/b || fail "iso-chown-b-$fs"
+    chmod -R a+rX $LAYER/ns/shared && chmod 0755 $LAYER/ns $LAYER/ns/shared || fail "iso-shared-$fs"
+    chmod 0755 $LAYER || fail "iso-root-mode-$fs"   # QUERY needs an open descriptor of the root
+    for u in 1001 1002; do
+        $BIN/query --uid $u $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-$u-$fs"
+        $BIN/moobfs-index --uid $u $LOWER kind eq string note > /tmp/o.txt || fail "iso-oracle-$u-$fs"
+        cmp -s /tmp/k.txt /tmp/o.txt || { echo "kernel:"; cat /tmp/k.txt; echo "oracle:"; cat /tmp/o.txt; fail "iso-mismatch-$u-$fs"; }
+        [ "$(wc -l < /tmp/k.txt)" -eq 6 ] || fail "iso-count-$u-$fs"
+        other=$([ $u = 1001 ] && echo b || echo a)
+        grep -q "ns/$other/" /tmp/k.txt && fail "iso-leak-$u-$fs"
+        grep -q "ns/shared/" /tmp/k.txt || fail "iso-shared-missing-$u-$fs"
+    done
+    $BIN/query $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-root-$fs"
+    [ "$(wc -l < /tmp/k.txt)" -eq 9 ] || fail "iso-root-count-$fs"
+    # many candidates, few authorized: results and counts must stay exact beyond one chunk
+    mkdir -p $LAYER/ns/bulk && chmod 0700 $LAYER/ns/bulk || fail "iso-bulk-$fs"
+    for i in $(seq 1 600); do : > $LAYER/ns/bulk/f$i; done
+    $BIN/moobfs-attr set $LAYER/ns/bulk/f1 kind string note >/dev/null || fail "iso-bulk-attr-$fs"
+    for i in $(seq 2 600); do setfattr -n user.moob.kind -v "$(printf '\001note')" $LAYER/ns/bulk/f$i 2>/dev/null || $BIN/moobfs-attr set $LAYER/ns/bulk/f$i kind string note || fail "iso-bulk-attr-$fs"; done
+    chown -R 1002:1002 $LAYER/ns/bulk || fail "iso-bulk-chown-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "iso-bulk-query-$fs"
+    [ "$(wc -l < /tmp/k.txt)" -eq 6 ] || fail "iso-bulk-count-$fs"
+    $BIN/moobfs-index --uid 1001 $LOWER kind eq string note > /tmp/o.txt || fail "iso-bulk-oracle-$fs"
+    cmp -s /tmp/k.txt /tmp/o.txt || fail "iso-bulk-mismatch-$fs"
+    rm -rf $LAYER/ns/bulk || fail "iso-bulk-rm-$fs"
+    # changing the attribute never grants access; changing permissions does, immediately
+    $BIN/moobfs-attr set $LAYER/ns/b/m1.md namespace string a || fail "iso-reattr-$fs"
+    $BIN/query --uid 1001 $LAYER namespace eq string a > /tmp/k.txt || fail "iso-query-reattr-$fs"
+    grep -q "ns/b/" /tmp/k.txt && fail "iso-attr-grants-$fs"
+    chmod 0755 $LAYER/ns/b && chmod a+r $LAYER/ns/b/m1.md || fail "iso-chmod-$fs"
+    $BIN/query --uid 1001 $LAYER namespace eq string a > /tmp/k.txt || fail "iso-query-chmod-$fs"
+    grep -q "ns/b/m1.md" /tmp/k.txt || fail "iso-perm-not-seen-$fs"
+    grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-perm-overreach-$fs"
+    umount $LAYER || fail "iso-umount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "iso-remount-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-remount-$fs"
+    grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-leak-remount-$fs"
+    rm -rf $LAYER/ns || fail "iso-cleanup-$fs"
+    echo "ISOLATION_PASS: $fs"
     mkdir -p $LAYER/fsx
     $BIN/fsx -q -N 5000 -S 1 $LAYER/fsx/file1 || fail "fsx-1-$fs"
     $BIN/fsx -q -N 3000 -S 2 -r 512 -w 512 $LAYER/fsx/file2 || fail "fsx-2-$fs"

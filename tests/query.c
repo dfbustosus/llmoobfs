@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * ioctl client for the MoobFS layer, used by the VM tests.
- *   query <mount> <name> <op> <type> <value> [...]   prints "<ino>\t<path>" sorted by ino
+ *   query [--uid N] <mount> <name> <op> <type> <value> [...]   prints "<ino>\t<path>" sorted by ino
+ *   --uid N drops privileges to uid/gid N before opening, to test isolation.
  *   query <mount> info                               prints GET_INFO fields
  *   query <mount> invalid                            checks that malformed requests are refused
  */
@@ -34,6 +35,11 @@ int main(int argc, char **argv)
 	struct moob_query q;
 	struct moob_query_result *res;
 
+	if (argc >= 3 && !strcmp(argv[1], "--uid")) {
+		uid_t u = (uid_t)strtoul(argv[2], NULL, 10);
+		if (setgid(u) || setuid(u)) { perror("setuid"); return 1; }
+		argv += 2; argc -= 2;
+	}
 	if (argc < 3)
 		return 64;
 	fd = open(argv[1], O_RDONLY | O_DIRECTORY);

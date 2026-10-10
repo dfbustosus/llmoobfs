@@ -4,13 +4,15 @@
  * reads every typed attribute with the shared encoding and answers the same
  * conjunctive queries, printing "<ino>\t<path>" lines sorted by inode number.
  *
- *   moobfs-index <dir> <name> <op> <type> <value> [... up to 4 terms]
+ *   moobfs-index [--uid N] <dir> <name> <op> <type> <value> [... up to 4 terms]
+ * --uid N drops privileges first, so the walk sees only what that user may reach.
  */
 #define _GNU_SOURCE
 #include <ftw.h>
 #include <sys/xattr.h>
 #include <sys/stat.h>
 #include <inttypes.h>
+#include <unistd.h>
 #include "query-common.h"
 
 static struct moob_query_term terms[MOOB_QUERY_MAX_TERMS];
@@ -103,8 +105,13 @@ int main(int argc, char **argv)
 {
 	size_t i;
 
+	if (argc >= 3 && !strcmp(argv[1], "--uid")) {
+		uid_t u = (uid_t)strtoul(argv[2], NULL, 10);
+		if (setgid(u) || setuid(u)) { perror("setuid"); return 1; }
+		argv += 2; argc -= 2;
+	}
 	if (argc < 6) {
-		fprintf(stderr, "usage: moobfs-index <dir> <name> <op> <type> <value> [...]\n");
+		fprintf(stderr, "usage: moobfs-index [--uid N] <dir> <name> <op> <type> <value> [...]\n");
 		return 64;
 	}
 	nterms = parse_terms(argc, argv, 2, terms);
