@@ -40,3 +40,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0020 — Fase 3b: autorização POSIX no `QUERY` (em andamento)](0020-phase-3b-query-authorization.md)
 - [0021 — Auditoria de anterioridade e estratégia de distribuição](0021-originality-and-distribution.md)
 - [0022 — Avaliação de utilidade, proposta de valor e maturidade como critério de adoção](0022-value-assessment.md)
+- [0023 — Revisão de implementação, planos e próximo experimento](0023-project-review.md)

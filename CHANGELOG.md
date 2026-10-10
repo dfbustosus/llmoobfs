@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/project-review-2026-10-10.md`: implementation and roadmap review, static QUERY
+  correctness findings, configurations requiring Linux reproduction, and a proposed
+  focused benchmark and agent-memory demonstration. Analysis only; no code fixes.
 - `docs/research-originality.md`: prior-art and originality audit (SFS, BFS, YoloFS, SMFS and
   others; patents described, no legal opinion); claims classified as proven, probable or
   unverified, with a list of statements to avoid in public texts.
