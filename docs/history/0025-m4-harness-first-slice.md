@@ -39,13 +39,23 @@ bytes diferentes; 300 `memory_id` únicos; 16/8/6 atributos por perfil), W1 com 
 criando 300 arquivos sem `.tmp` sobrando e `moobfs-check` limpo com 4800 atributos, W2 e W4,
 1200 registros, erros reportados (`n=0 err=300` contra árvore ausente), relatório com duas
 repetições. Os tempos impressos pelo smoke não são medidas do projeto: ambiente emulado,
-diretório comum, sem camada. W3 não foi exercitado (precisa da camada montada; entra na suíte
-da VM na próxima fatia).
+diretório comum, sem camada. W3 foi exercitado em seguida na suíte da VM (abaixo).
+
+Bloco `bench` em `vm/suite.sh` (`make vm-test`, kernel Debian 6.12.111, `build/vm-test-bench.log`):
+sobre a camada montada em ext4, btrfs e XFS, W1 com 2 processos criou 300 memórias do perfil 16
+(`moobfs-check` no inferior: 4800 atributos, sem problemas), W2 leu todas, cada uma das nove
+formas de W3 (`bench/queries-w3.txt`, Q1–Q9) devolveu pelo `QUERY` exatamente o conjunto do
+oráculo `moobfs-index`, W3 e W4 gravaram um registro por chamada (1209 registros no total);
+`BENCH_LAYER_PASS` nos três, `MOOBFS_LAYER_PASS` e `MOOBFS_ACCEPTANCE_PASS` inalterados. Os
+binários do harness são compilados estáticos e preparados em `vm/in-container.sh` e no workflow
+KASAN. Uma primeira execução falhou em `attr-set-ext4` por binários dinâmicos reaproveitados de
+um `build/linux` deixado por um contêiner diferente; `rm -rf build/linux` resolveu (anotado em
+`docs/development.md` como cuidado ao alternar contêineres).
 
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no
-filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5, W8 e W9;
+filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5, W8 e W9; o relatório não roda na VM (sem Python no initramfs);
 `sqlbase`, `equiv`, `mountclock` e `run.sh` não existem.
 
 ## Próximo passo

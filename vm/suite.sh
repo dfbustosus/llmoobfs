@@ -218,6 +218,28 @@ run_lower() {
     cmp -s /tmp/k.txt /tmp/o.txt || { diff /tmp/k.txt /tmp/o.txt; fail "race-final-mismatch-$fs"; }
     rm -rf $LAYER/ns || fail "iso-cleanup-$fs"
     echo "ISOLATION_PASS: $fs"
+    # M4 harness over the layer (correctness, no numbers): W1 creates a profile-16 dataset,
+    # W2 reads it, every W3 shape agrees with the oracle, W3 and W4 record one entry per call
+    mkdir -p $LAYER/bench && chmod 0755 $LAYER/bench || fail "bench-mkdir-$fs"
+    $BIN/bench-gen --seed 11 --inodes 300 --profile 16 --out /tmp/bench-m.txt || fail "bench-gen-$fs"
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W1 --procs 2 --out /tmp/bench-w1 || fail "bench-w1-$fs"
+    [ "$(find $LAYER/bench -type f -name '*.md' | wc -l)" -eq 300 ] || fail "bench-w1-count-$fs"
+    $BIN/moobfs-check $LOWER/bench > /tmp/bench-check.json || { cat /tmp/bench-check.json; fail "bench-check-$fs"; }
+    grep -q '"typed_attributes": 4800' /tmp/bench-check.json || fail "bench-check-attrs-$fs"
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W2 --procs 2 --out /tmp/bench-w2 || fail "bench-w2-$fs"
+    grep -v '^#' $BIN/bench-queries-w3.txt > /tmp/bench-q.txt || fail "bench-queries-$fs"
+    nq=0
+    while read -r qline; do
+        # shellcheck disable=SC2086
+        same_query $qline || fail "bench-w3-equiv-$nq-$fs"
+        nq=$((nq + 1))
+    done < /tmp/bench-q.txt
+    [ "$nq" -eq 9 ] || fail "bench-w3-shapes-$fs"
+    $BIN/bench-load --queries /tmp/bench-q.txt --target $LAYER/bench --root $LAYER --workload W3 --out /tmp/bench-w3 || fail "bench-w3-$fs"
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W4 --out /tmp/bench-w4 || fail "bench-w4-$fs"
+    [ "$(cat /tmp/bench-w1.*.rec /tmp/bench-w2.*.rec /tmp/bench-w3.*.rec /tmp/bench-w4.*.rec | wc -c)" -eq $(( (300 + 300 + 9 + 600) * 32 )) ] || fail "bench-records-$fs"
+    rm -rf $LAYER/bench /tmp/bench-* || fail "bench-cleanup-$fs"
+    echo "BENCH_LAYER_PASS: $fs"
     mkdir -p $LAYER/fsx
     $BIN/fsx -q -N 5000 -S 1 $LAYER/fsx/file1 || fail "fsx-1-$fs"
     $BIN/fsx -q -N 3000 -S 2 -r 512 -w 512 $LAYER/fsx/file2 || fail "fsx-2-$fs"
@@ -342,7 +364,7 @@ check_mark() {   # replay up to a mark; memories 1..$2 must be whole, later ones
     done
     $BIN/query $LAYER kind eq string decision > /tmp/k.txt || return 1
     [ "$(wc -l < /tmp/k.txt)" -eq "$2" ] || return 1
-    ls -A $LOWER | grep -q '^\.tmp\.' && echo "note: a temporary file survived the crash at $1 (allowed)"
+    for leftover in "$LOWER"/.tmp.*; do [ -e "$leftover" ] && echo "note: a temporary file survived the crash at $1 (allowed)"; break; done
     umount $LAYER && umount $LOWER
 }
 check_mark mkfs 0 || fail lw-check-mkfs

@@ -1,0 +1,12 @@
+# W3 fixed query shapes (docs/benchmark-harness.md §4.1), one per line, as bench/load and
+# tests/query.c parse them: <name> <op> <type> <value> [... up to 4 terms]; exists takes "- -".
+# Q8 needs tag1 (profile 16). Values match bench/gen output (kinds, ns<i>, a<jj>, v<kk>).
+kind eq string note
+kind eq string decision score gt int64 500
+namespace eq string ns3 agent eq string a07
+namespace eq string ns1 kind eq string fact created ge time 1760000300000000000
+pinned eq bool 1 score lt int64 500
+kind prefix string de
+score ge int64 250 score le int64 750
+tag1 eq string v00 kind eq string note pinned eq bool 0 score gt int64 100
+weight exists - -
