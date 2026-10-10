@@ -56,6 +56,7 @@ static pid_t spawn_userns_child(int *to_child, int *from_child, const char *lowe
 		char c, opt[4096];
 		close(p1[1]); close(p2[0]);
 		if (unshare(CLONE_NEWUSER | CLONE_NEWNS)) _exit(10);
+		if (write(p2[1], "u", 1) != 1) _exit(12);	/* namespace exists: parent may write the maps */
 		if (read(p1[0], &c, 1) != 1) _exit(11);	/* parent wrote the maps */
 		if (c == 'q') _exit(0);			/* idmap test: only needed as a namespace */
 		snprintf(opt, sizeof opt, "lower=%s", lower);
@@ -66,7 +67,8 @@ static pid_t spawn_userns_child(int *to_child, int *from_child, const char *lowe
 	}
 	close(p1[0]); close(p2[1]);
 	{
-		char path[64];
+		char path[64], ack;
+		if (read(p2[0], &ack, 1) != 1 || ack != 'u') return -1;
 		snprintf(path, sizeof path, "/proc/%d/setgroups", pid); write_file(path, "deny");
 		snprintf(path, sizeof path, "/proc/%d/uid_map", pid); if (write_file(path, "0 1001 1")) return -1;
 		snprintf(path, sizeof path, "/proc/%d/gid_map", pid); if (write_file(path, "0 1001 1")) return -1;
