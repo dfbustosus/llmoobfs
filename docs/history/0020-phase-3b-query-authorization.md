@@ -54,3 +54,41 @@ Resultado do harness Debian; KASAN sobre a branch; ACLs POSIX no teste (pacote `
 imagem); teste de `chmod`/`rename`/`unlink` concorrentes com consultas; anotar em
 `docs/spec-m3.md` o contrato TOCTOU e a semântica de erros; atualizar
 `docs/benchmark-harness.md` com as formas fixas de W3 e os índices; registro final.
+
+## Terceira rodada da revisão externa: decisões aceitas e evidência de código
+
+**Identidade (fase 3a).** Chave lógica `(namespace, memory_id)`; `agent` é autoria, não parte
+da chave. O mesmo `memory_id` em namespaces diferentes são duas memórias; conteúdo igual não é
+identidade igual; reflink é compartilhamento físico, não lógico; hard link é o mesmo inode e os
+mesmos xattr, logo não serve para duas identidades. Proveniência por convenção do cliente:
+`user.moob.origin_namespace` e `user.moob.origin_id` (strings). O kernel não gera ids nem
+interpreta proveniência. `moobfs-check`: normal (mesmo id em namespaces distintos), aviso
+(mesmo id, conteúdo idêntico, sem proveniência), erro (dois inodes com o mesmo
+`(namespace, memory_id)`); hard links do mesmo inode não são duplicidade; comparação de
+conteúdo opcional. Nenhuma mudança no kernel. Pendente: formalizar em `docs/spec-m3.md` §2 e
+implementar no verificador com os cenários listados pela revisão (cópia, reflink, hard link,
+proveniência ausente ou inválida, rename, remontagem).
+
+**Autorização (fase 3b), evidência atual.** `moobl_permission` (`layer/main.c:699`) delega a
+`inode_permission(&nop_mnt_idmap, inode_inferior, mask)`: isso executa a verificação do
+inferior inteira, inclusive ACLs POSIX via `generic_permission` do inferior e
+`security_inode_permission` sobre a inode inferior; o VFS já chamou
+`security_inode_permission` sobre a inode superior antes de chegar à camada. Não há segunda
+verificação DAC sobre metadados da inode superior. `caller_may_read` (`layer/index.c`) usa
+`vfs_path_lookup` com o `file->f_path.mnt` do chamador e `inode_permission(MAY_READ)` sobre a
+inode superior, o que passa pela mesma `moobl_permission`; portanto a decisão do `QUERY` é a
+mesma de um `open()` pela camada. Divergência conhecida a documentar: ambas usam
+`nop_mnt_idmap`, correto apenas porque a camada não admite idmapped mounts.
+
+**Idmapped mounts e user namespaces.** `moobl_fs_type` não declara `FS_ALLOW_IDMAP` nem
+`FS_USERNS_MOUNT` (`layer/main.c`): no 6.12, `mount_setattr` com idmapping sobre um
+filesystem sem `FS_ALLOW_IDMAP` é recusado pelo VFS com `EINVAL`, e montar sem
+`FS_USERNS_MOUNT` exige `CAP_SYS_ADMIN` no user namespace inicial, com `EPERM` caso contrário.
+Decisão: não acrescentar verificação redundante no módulo; documentar como contrato e provar
+na VM (`mount_setattr` deve falhar com `EINVAL`; `unshare -Ur` + mount deve falhar com
+`EPERM`). Pendente: pacote `acl` na imagem, testes de ACL (bits negam/ACL concede, bits
+concedem/ACL nega, travessia por ACL, ACL alterada após índice e durante consultas), e os
+testes de idmap/userns em `vm/suite.sh`.
+
+Execução local da fase 3b com a raiz do initramfs em 0755: em andamento no momento deste
+registro; resultado a anexar.
