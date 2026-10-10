@@ -35,3 +35,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0015 — Fase 2e: aceitação com clientes reais e investigação de perda de linhas no SQLite](0015-phase-2e-investigation.md)
 - [0016 — Harness com KASAN e lockdep em kernel próprio; diagrama de fluxo no site](0016-kasan-lockdep-harness.md)
 - [0017 — Uso no macOS e postura de segurança comparada ao mercado](0017-macos-and-security-posture.md)
+- [0018 — Reescrita da história do Git: remoção de perguntas e de dados pessoais](0018-history-rewrite.md)

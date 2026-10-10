@@ -42,7 +42,7 @@ configurado para GitHub Actions com HTTPS e relatos privados de vulnerabilidade
 ativados (API confirmou `enabled: true`). Nenhum plano pago foi contratado.
 
 A primeira tentativa de workflow Pages falhou enquanto o site ainda não estava
-habilitado. Após a configuração, a reexecução passou. Resultados no commit `5827927`:
+habilitado. Após a configuração, a reexecução passou. Resultados no commit `ed4b997`:
 
 - [CI 38058154595](https://github.com/studiomoob/llmoobfs/actions/runs/38058154595):
   sucesso em ferramentas/sanitizers e VM nativa Linux.

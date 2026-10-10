@@ -9,7 +9,7 @@ Leia `README.md`, `docs/history/README.md`, o registro de sessão mais recente e
 - Documente decisões arquiteturais em `docs/decisions/` com IDs sequenciais. Preserve decisões antigas; uma mudança deve apontar para a decisão que substitui.
 - Preserve especificações anteriores. Identifique claramente proposta, implementação e comportamento efetivamente testado.
 - Atualize `CHANGELOG.md` para alterações relevantes. Guarde comandos reproduzíveis e resumos de resultados; nunca apresente teste não executado como aprovado.
-- Faça commits locais pequenos e legíveis quando houver uma unidade concluída. Não reescreva história compartilhada, não faça force-push e não apague registros para esconder tentativas ou limitações.
+- Faça commits locais pequenos e legíveis quando houver uma unidade concluída. Não reescreva história compartilhada, não faça force-push e não apague registros para esconder tentativas ou limitações. Exceção única e registrada: em 2026-10-10 a história foi reescrita, com autorização explícita do usuário, para remover perguntas registradas por engano e dados pessoais (registro 0018).
 - Não armazene credenciais, tokens, dumps de ambiente ou dados pessoais desnecessários. Históricos registram justificativas técnicas resumidas, não raciocínio interno privado do assistente.
 - Antes de terminar uma tarefa, deixe claro o estado atual, os testes, as limitações e o próximo passo. Corrija registros factualmente errados com uma nota datada.
 

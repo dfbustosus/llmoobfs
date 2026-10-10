@@ -129,7 +129,7 @@ MOOBFS_LAYER_PASS: … index and QUERY equal to the oracle …
 - `dm-flakey` com `error_writes`: erros do ext4 no `dmesg` como esperado, sem `BUG`/`Oops`/
   `WARNING`; após a troca de tabela e `e2fsck`, remontagem limpa, conteúdo anterior intacto,
   `moobfs-check` limpo.
-- Nenhum aviso de kernel na VM local com as duas correções. CI do commit `c48cc9f` (run
+- Nenhum aviso de kernel na VM local com as duas correções. CI do commit `9a37b88` (run
   38070138824, runner x86 com 2 CPUs, onde a corrida do `nlink` aparecia): ferramentas,
   sanitizers, fuzzing e VM nativa com sucesso, zero ocorrências de `WARNING:` no log.
 

@@ -84,7 +84,7 @@ VM (pacotes Debian no container, extraídos para o initramfs).
 
 ## Adendo (2026-10-10): CI e critério da fase 2e
 
-CI do commit `42e3901` (run 38067281430): ferramentas, sanitizers, fuzzing e VM Linux nativa
+CI do commit `0fd38a5` (run 38067281430): ferramentas, sanitizers, fuzzing e VM Linux nativa
 com sucesso. O usuário decidiu que o ai-memory não entra no critério de saída do M2: a fase 2e
 usa git, SQLite e um cliente de memória próprio; sistemas externos ficam para o benchmark do
 M4. Especificação e ADR-0007 anotadas.

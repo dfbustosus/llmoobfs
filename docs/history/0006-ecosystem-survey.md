@@ -9,7 +9,7 @@ projetos de software livre que ajudem o MoobFS, para não resolver problemas que
 
 ## Resultado
 
-- `git push origin main` publicou `ae16320` (ADR-0005); os dois checks obrigatórios foram
+- `git push origin main` publicou `b2fb037` (ADR-0005); os dois checks obrigatórios foram
   acionados no GitHub.
 - `docs/ecosystem.md` (novo) organiza o levantamento por problema: VM instrumentada, fuzzing,
   crash-consistency, estruturas de kernel, BFS em espaço de usuário, camadas de memória para
