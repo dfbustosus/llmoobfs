@@ -66,6 +66,23 @@ uid deve coincidir com o kernel. Regressão completa (POSIX, git, SQLite, dm-log
 dm-flakey, KASAN/lockdep). Critério de pronto: identidade estável e consultável sem segunda
 política de autorização; zero vazamento entre usuários em todos os inferiores.
 
+### 3.1 Contrato de autorização do `QUERY` (UAPI v1, semântica)
+
+- A autorização é verificada no instante da consulta, com as credenciais efetivas do
+  chamador, pela resolução do caminho no VFS e por `inode_permission(MAY_READ)` no objeto
+  resolvido, que precisa pertencer à montagem consultada e ter o inode indexado.
+- Um resultado não concede acesso: o cliente faz `open()` normalmente e deve aceitar `EACCES`
+  ou `ENOENT` se permissões ou nomes mudaram depois da consulta. Não há garantia de ausência
+  de janela TOCTOU na v1 e não haverá handle especial para fechá-la sem necessidade medida.
+- `count`, `limit` e `truncated` referem-se só a resultados visíveis ao chamador. O número de
+  candidatos examinados não é limitado pelo `limit`: a varredura percorre todos os candidatos
+  em lotes, com retomada por chave ordenada.
+- Falhas de autorização omitem o resultado em silêncio. Falhas operacionais (`ENOMEM`,
+  `EFAULT`) retornam erro.
+- Entradas cujo caminho registrado ficou obsoleto (diretório renomeado) são resolvidas pelo
+  alias de dentry quando existe; sem caminho verificável, são omitidas. Isso pode produzir
+  falsos negativos até a próxima montagem; é limitação documentada, não vazamento.
+
 ## 4. Operações em lote: contrato, decisão condicionada a medição
 
 Duas candidatas, com propósitos diferentes:

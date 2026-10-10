@@ -27,8 +27,8 @@ Data: 2026-10-10, America/Sao_Paulo. Estado: **em andamento**. Código na branch
   prefixo de string como intervalo binário com `COLLATE BINARY`; existência como
   `IS NOT NULL`; `-0.0`/`0.0` evitados pelo gerador; gate de `EXPLAIN QUERY PLAN` após
   `ANALYZE` registrando índice e predicados aproveitados, com exceções de `SCAN` documentadas;
-  `sqlite3_stmt_scanstatus_v2` só se a build do SQLite tiver a opção. Pendente de levar para
-  `docs/benchmark-harness.md`.
+  `sqlite3_stmt_scanstatus_v2` só se a build do SQLite tiver a opção. Levado para
+  `docs/benchmark-harness.md` §4.1; contrato TOCTOU e erros em `docs/spec-m3.md` §3.1.
 
 ## Implementado na branch
 
@@ -44,8 +44,9 @@ Data: 2026-10-10, America/Sao_Paulo. Estado: **em andamento**. Código na branch
 
 1. Primeira versão (teto de 4×limite de candidatos): falhou em `iso-query-1001-ext4` porque
    a raiz estava em 0711 e o cliente sem privilégio não abria o diretório. Corrigido.
-2. Versão em lotes com retomada: execução local em andamento no momento deste registro;
-   resultado a anexar.
+2. Versão em lotes com retomada: falhou no mesmo ponto; causa no harness, a raiz do initramfs
+   nasce 0700 (herdada de `mktemp -d`) e usuários sem privilégio não atravessam `/`.
+   Corrigido em `vm/init` (`chmod 0755 /`, `/tmp` 1777). Nova execução a anexar.
 
 ## Pendências para fechar a fase
 

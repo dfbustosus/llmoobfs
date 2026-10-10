@@ -71,6 +71,43 @@ Equivalência: `bench/equiv` executa as consultas de W3 nos três sistemas e com
 conjuntos de inodes depois de mapear caminhos; qualquer diferença aborta a medição. O
 oráculo é o árbitro quando kernel e SQLite divergem.
 
+### 4.1 Formas de consulta de W3 e índices
+
+W3 não usa combinações arbitrárias: tem formas fixas, cada uma coberta por um índice composto
+com igualdade antes de intervalo. Para o perfil de 8 atributos:
+
+| Forma | Predicado | Índice que a cobre |
+| --- | --- | --- |
+| Q1 | `kind =` | `(kind, score)` por prefixo |
+| Q2 | `kind = AND score >` | `(kind, score)` |
+| Q3 | `namespace = AND agent =` | `(namespace, agent)` |
+| Q4 | `namespace = AND kind = AND created >=` | `(namespace, kind, created)` |
+| Q5 | `pinned = AND score <` | `(pinned, score)` |
+| Q6 | `kind prefix` | `(kind, score)` como intervalo binário `[p, p+1)` com `COLLATE BINARY` |
+| Q7 | `score >= AND score <=` | `(score)` |
+| Q8 | `tag1 = AND kind = AND pinned = AND score >` | `(tag1, kind, pinned, score)` |
+| Q9 | `weight exists` | `(weight)` com `IS NOT NULL` |
+
+Índices simples cujo papel é coberto pelo prefixo de um composto (`kind`, `namespace`,
+`pinned`) não são criados. `agent`, `created` e `weight` simples ficam para consultas de um
+termo sobre eles. Combinações fora dessa lista não entram em W3; se forem necessárias, ganham
+índice próprio e passam pelo mesmo gate. Semântica: prefixo por intervalo binário (limite
+superior incrementando o último byte, com tratamento de `0xFF`); existência como `IS NOT
+NULL`, pois atributo ausente é `NULL` no baseline; o gerador evita `-0.0` e NaN, porque o
+MoobFS ordena `-0.0 < 0.0` e o SQLite os iguala.
+
+Gate antes de cada medição: carregar o dataset, `ANALYZE`, registrar a versão do SQLite,
+gerar as consultas concretas, `EXPLAIN QUERY PLAN` em cada uma, registrar `SEARCH`/`SCAN`, o
+índice usado e os predicados aproveitados; validar equivalência com o oráculo; medir só
+depois. `SCAN` legitimamente mais barato para uma distribuição é documentado como exceção
+com justificativa; `INDEXED BY` não é usado para forçar planos.
+`sqlite3_stmt_scanstatus_v2()` só se a build tiver `SQLITE_ENABLE_STMT_SCANSTATUS`.
+O banco fica no mesmo filesystem dos arquivos, em WAL com `synchronous=NORMAL`, e a
+amplificação de escrita inclui arquivos, metadados, páginas do banco, índices, WAL e
+checkpoints; o crescimento lógico de cada parte é registrado em separado. O custo de
+autorização do `QUERY` é medido à parte do custo do índice, comparando a mesma consulta como
+root e como usuário restrito, com `perf` sobre a função de autorização.
+
 ## 5. Coleta de latência
 
 `load` registra por chamada: carga, operação, início e duração em nanossegundos
