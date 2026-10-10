@@ -13,6 +13,11 @@
  *    MOOB_IOC_QUERY on --root (default: --target), limit 4096; result = count,
  *    or -EOVERFLOW when the answer was truncated.
  * W4 rewrites "score" and then sets and removes a "scratch" attribute per memory.
+ * W5 (needs --queries and --root): processes 1..N-1 walk their share of the manifest renaming
+ *    each memory away and back, then unlinking and recreating it with its attributes, while
+ *    process 0 cycles through the query file until every mutator has finished. Records: RENAME
+ *    and RECREATE for the mutators, QUERY for the reader; a query may legitimately see fewer
+ *    results during the churn, so result counts are informative only.
  * W8 mixed load: each process walks its share of the manifest and, per memory, picks with a
  *    seeded PRNG a read (70%), an attribute update (20%) or one QUERY from --queries (10%,
  *    only when --queries and --root are given); records carry workload 8 and the op code.
@@ -238,6 +243,72 @@ static int w8_one_query(int fd, struct moob_query_result *res, uint64_t *rng)
 	return result < 0 ? -1 : 0;
 }
 
+static int w5_mutate(const struct bench_line *l, uint64_t content_seed)
+{
+	char full[4096], away[4112];
+	uint64_t t0;
+	int err = 0;
+
+	snprintf(full, sizeof full, "%s/%s", target, l->path);
+	snprintf(away, sizeof away, "%s.away", full);
+	t0 = now_ns();
+	if (rename(full, away) || rename(away, full)) err = -errno;
+	record(BENCH_OP_RENAME, t0, err ? err : 0);
+	t0 = now_ns();
+	if (unlink(full)) { record(BENCH_OP_RECREATE, t0, -errno); return -1; }
+	{
+		/* recreate with the same bytes and attributes, through the W1 path but recorded as RECREATE */
+		uint8_t *buf = malloc(l->size);
+		int fd, i;
+
+		if (!buf) { record(BENCH_OP_RECREATE, t0, -ENOMEM); return -1; }
+		bench_fill(buf, l->size, content_seed);
+		fd = open(full, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (fd < 0 || write(fd, buf, l->size) != (ssize_t)l->size) err = -errno;
+		for (i = 0; !err && i < l->nattrs; i++)
+			if (set_attr(full, &l->attrs[i])) err = -errno;
+		if (fd >= 0) close(fd);
+		free(buf);
+	}
+	record(BENCH_OP_RECREATE, t0, err ? err : 0);
+	return err ? -1 : 0;
+}
+
+static int w5_reader(pid_t *kids, int nkids)
+{
+	int fd, alive = nkids, rc = 0;
+	struct moob_query_result *res;
+
+	if (w8_load_queries() || !w8nq) { fprintf(stderr, "load: W5 needs query lines\n"); return 1; }
+	fd = open(root, O_RDONLY | O_DIRECTORY);
+	if (fd < 0) { perror(root); return 1; }
+	res = calloc(MOOB_QUERY_MAX_LIMIT, sizeof *res);
+	if (!res) return 1;
+	while (alive > 0) {
+		int i, status;
+		uint64_t rng = 1;
+
+		for (i = 0; i < w8nq; i++) {
+			struct moob_query q = w8q[i];
+			uint64_t t0 = now_ns();
+			int32_t result;
+
+			q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT; q.results = (__u64)(uintptr_t)res;
+			if (ioctl(fd, MOOB_IOC_QUERY, &q)) { result = -errno; rc = 1; }
+			else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
+			record(BENCH_OP_QUERY, t0, result);
+		}
+		(void)rng;
+		for (i = 0; i < nkids; i++)
+			if (kids[i] > 0 && waitpid(kids[i], &status, WNOHANG) == kids[i]) {
+				if (!WIFEXITED(status) || WEXITSTATUS(status)) rc = 1;
+				kids[i] = 0; alive--;
+			}
+	}
+	free(res); close(fd);
+	return rc;
+}
+
 static int w3_queries(void)
 {
 	FILE *qf = fopen(queries, "r");
@@ -383,11 +454,13 @@ static int run_proc(void)
 		}
 		cseed = l.dup_of >= 0 && (size_t)l.dup_of < nseeds ? seeds[l.dup_of] : l.seed;
 		seeds[nseeds++] = cseed;
-		if ((idx++ % (size_t)nprocs) != proc_id) continue;
+		if (workload == 5) { if (nprocs < 2 || ((idx++ % (size_t)(nprocs - 1)) + 1) != proc_id) continue; }
+		else if ((idx++ % (size_t)nprocs) != proc_id) continue;
 		switch (workload) {
 		case 1: if (w1_create(&l, cseed)) failures++; break;
 		case 2: if (w2_read(&l)) failures++; break;
 		case 4: if (w4_attrs(&l)) failures++; break;
+		case 5: if (proc_id > 0 && w5_mutate(&l, cseed)) failures++; break;
 		case 8: {
 			uint64_t pick = bench_next(&rng) % 100;
 
@@ -423,13 +496,31 @@ int main(int argc, char **argv)
 		else { fprintf(stderr, "load: unknown option %s\n", argv[a]); return 64; }
 	}
 	if (a != argc || !target || !out || nprocs < 1 || nprocs > 1024 ||
-	    !(workload == 1 || workload == 2 || workload == 3 || workload == 4 || workload == 6 || workload == 7 || workload == 8) ||
-	    (workload == 3 ? !queries : (workload == 6 || workload == 7) ? (!queries || !lower || repeat < 1) : !manifest)) {
-		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4|W8 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n"
+	    !(workload == 1 || workload == 2 || workload == 3 || workload == 4 || workload == 5 || workload == 6 || workload == 7 || workload == 8) ||
+	    (workload == 3 ? !queries : (workload == 6 || workload == 7) ? (!queries || !lower || repeat < 1) :
+	     workload == 5 ? (!manifest || !queries || !root || nprocs < 2) : !manifest)) {
+		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4|W5|W8 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n"
 				"       load --workload W6|W7 --target MOUNT --lower DIR --queries FILE --out PREFIX [--repeat N]   (root)\n");
 		return 64;
 	}
 	if (nprocs == 1 || workload == 6 || workload == 7) { proc_id = 0; return run_proc(); }
+	if (workload == 5) {
+		pid_t kids[1024];
+		char recname[4096];
+
+		for (i = 1; i < nprocs; i++) {
+			kids[i - 1] = fork();
+			if (kids[i - 1] < 0) { perror("fork"); return 1; }
+			if (!kids[i - 1]) { proc_id = (unsigned)i; _exit(run_proc()); }
+		}
+		proc_id = 0;
+		snprintf(recname, sizeof recname, "%s.0.rec", out);
+		recf = fopen(recname, "wb");
+		if (!recf) { perror(recname); return 1; }
+		rc = w5_reader(kids, nprocs - 1);
+		fclose(recf);
+		return rc;
+	}
 	for (i = 0; i < nprocs; i++) {
 		pid_t pid = fork();
 

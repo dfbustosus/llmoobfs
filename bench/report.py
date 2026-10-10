@@ -20,7 +20,7 @@ import struct
 import sys
 
 REC = struct.Struct("=IIQQIi")
-OPS = {1: "create", 2: "read", 3: "query", 4: "attr_set", 5: "attr_rm", 6: "mount"}
+OPS = {1: "create", 2: "read", 3: "query", 4: "attr_set", 5: "attr_rm", 6: "mount", 7: "rename", 8: "recreate"}
 
 
 def percentile(sorted_values, p):

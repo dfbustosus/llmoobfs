@@ -137,6 +137,8 @@ enum bench_op {
 	BENCH_OP_ATTR_SET = 4,	/* W4: setxattr of an existing attribute */
 	BENCH_OP_ATTR_RM = 5,	/* W4: set + remove of a scratch attribute */
 	BENCH_OP_MOUNT = 6,	/* W6/W7: mount (index rebuild) until the first QUERY answers */
+	BENCH_OP_RENAME = 7,	/* W5: rename away and back */
+	BENCH_OP_RECREATE = 8,	/* W5: unlink + create with the same attributes */
 };
 
 #endif

@@ -1,0 +1,130 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# bench/run: orchestrates one benchmark campaign (docs/benchmark-harness.md §2, §6, §8).
+# Prepares each system, loads the dataset, checks equivalence, runs the workloads in an
+# order that alternates between repetitions, collects system metrics and keeps every raw
+# artifact under --out. Numbers are only meaningful on a Linux host or VM with KVM; under
+# emulation this script validates the procedure, not the results.
+#
+#   run.sh --out DIR --scale N --profile 6|8|16 --reps R [--seed S] [--procs N]
+#          [--plain NAME=DIR ...] [--layer NAME=MOUNT:LOWER ...]
+#
+# --plain  a directory on a plain filesystem (baselines A and B): W1, W2, W4, W8, SQLite
+#          baseline load and plan gate, SQLite-vs-oracle equivalence. The SQLite latency
+#          path is not measured yet (see the harness document).
+# --layer  a mounted moobfs_layer root and its lower directory (system C): everything above
+#          plus W3 (QUERY), W5, W6, W7 and three-way equivalence. Run as root for W6/W7.
+# Environment: BIN (built tools, default build/host), SQLITE (default sqlite3).
+set -eu
+BIN=${BIN:-build/host}
+SQLITE=${SQLITE:-sqlite3}
+here=$(cd "$(dirname "$0")" && pwd)
+# sibling scripts: bench/ layout on a host, bench-* prefixed when staged into the VM
+sib() { if [ -e "$here/$1" ]; then echo "$here/$1"; else echo "$here/bench-$1"; fi; }
+SQLBASE=$(sib sqlbase.sh); EQUIV=$(sib equiv.sh); QUERIES=$(sib queries-w3.txt); REPORT=$(sib report.py)
+out=""; scale=1000; profile=8; reps=3; seed=1; procs=4
+plain=""; layer=""
+while [ $# -gt 0 ]; do
+    case $1 in
+        --out) out=$2; shift 2 ;;
+        --scale) scale=$2; shift 2 ;;
+        --profile) profile=$2; shift 2 ;;
+        --reps) reps=$2; shift 2 ;;
+        --seed) seed=$2; shift 2 ;;
+        --procs) procs=$2; shift 2 ;;
+        --plain) plain="$plain $2"; shift 2 ;;
+        --layer) layer="$layer $2"; shift 2 ;;
+        *) echo "run.sh: unknown option $1" >&2; exit 64 ;;
+    esac
+done
+[ -n "$out" ] && [ -n "$plain$layer" ] || { echo "usage: see the header of bench/run.sh" >&2; exit 64; }
+mkdir -p "$out"
+log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$out/run.log"; }
+
+# environment.txt: what §6 of the harness document asks for
+{
+    echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "kernel: $(uname -srm)"
+    echo "cpu: $(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //')  cores: $(nproc 2>/dev/null || echo ?)"
+    echo "memory: $(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2 " kB"}')"
+    echo "kvm: $([ -e /dev/kvm ] && echo present || echo absent)"
+    echo "sqlite: $($SQLITE --version 2>/dev/null | cut -d' ' -f1-2 || echo absent)"
+    echo "scale: $scale profile: $profile reps: $reps seed: $seed procs: $procs"
+    echo "systems: plain=[$plain ] layer=[$layer ]"
+    echo "commit: $(git -C "$here/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
+} > "$out/environment.txt"
+log "environment recorded in $out/environment.txt"
+
+"$BIN/bench-gen" --seed "$seed" --inodes "$scale" --profile "$profile" --out "$out/manifest.txt"
+grep -v '^#' "$QUERIES" > "$out/queries.txt"
+[ "$profile" -eq 16 ] || sed -i.bak '/^tag1 /d' "$out/queries.txt"   # Q8 needs tag1 (profile 16)
+log "manifest: $scale memories, profile $profile; $(wc -l < "$out/queries.txt" | tr -d ' ') query shapes"
+
+diskstat() { cat /proc/diskstats > "$1" 2>/dev/null || true; }
+
+run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for plain), $5 lower root ("" for plain)
+    rep=$1; name=$2; target=$3; mount=$4; lowerroot=$5; lower=${5:+$5/bench}
+    d="$rep/$name"; mkdir -p "$d"
+    rm -rf "$target"; mkdir -p "$target"
+    diskstat "$d/diskstats.before"
+    "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W1 --procs "$procs" --out "$d/w1"
+    sync; diskstat "$d/diskstats.after-w1"
+    [ -n "$mount" ] && "$BIN/query" "$mount" info > "$d/get_info.txt" 2>&1 || true
+    "$BIN/moobfs-check" "$target" > "$d/check.json" || { echo "run.sh: moobfs-check failed for $name"; return 1; }
+    rm -f "$d/base.db"*
+    SQLITE=$SQLITE sh "$SQLBASE" init "$d/base.db"
+    SQLITE=$SQLITE sh "$SQLBASE" load "$d/base.db" "$out/manifest.txt" "$target"
+    if [ -n "$mount" ]; then
+        env SQLITE="$SQLITE" SQLBASE="$SQLBASE" BIN="$BIN" sh "$EQUIV" "$out/queries.txt" "$d/base.db" "$lower" "$mount" > "$d/equiv.txt" || { cat "$d/equiv.txt"; return 1; }
+    else
+        env SQLITE="$SQLITE" SQLBASE="$SQLBASE" BIN="$BIN" sh "$EQUIV" "$out/queries.txt" "$d/base.db" "$target" > "$d/equiv.txt" || { cat "$d/equiv.txt"; return 1; }
+    fi
+    tail -1 "$d/equiv.txt" | tee -a "$out/run.log"
+    "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W2 --procs "$procs" --out "$d/w2"
+    if [ -n "$mount" ]; then
+        "$BIN/bench-load" --queries "$out/queries.txt" --target "$target" --root "$mount" --workload W3 --out "$d/w3"
+    fi
+    "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W4 --procs "$procs" --out "$d/w4"
+    if [ -n "$mount" ]; then
+        "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --root "$mount" --queries "$out/queries.txt" --workload W8 --procs "$procs" --out "$d/w8"
+        "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --root "$mount" --queries "$out/queries.txt" --workload W5 --procs "$procs" --out "$d/w5"
+        if [ "$(id -u)" = 0 ]; then
+            "$BIN/bench-load" --workload W6 --target "$mount" --lower "$lowerroot" --queries "$out/queries.txt" --out "$d/w6" --repeat 1
+            "$BIN/bench-load" --workload W7 --target "$mount" --lower "$lowerroot" --queries "$out/queries.txt" --out "$d/w7" --repeat 1
+        else
+            log "$name: W6/W7 skipped (not root)"
+        fi
+    else
+        "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W8 --procs "$procs" --out "$d/w8"
+    fi
+    sync; diskstat "$d/diskstats.after"
+    log "$name: done"
+}
+
+r=1
+while [ "$r" -le "$reps" ]; do
+    rep="$out/rep$r"; mkdir -p "$rep"
+    # alternate the order between repetitions: odd reps plain first, even reps layer first
+    if [ $((r % 2)) -eq 1 ]; then order="plain layer"; else order="layer plain"; fi
+    for kind in $order; do
+        if [ "$kind" = plain ]; then
+            for spec in $plain; do run_system "$rep" "${spec%%=*}" "${spec#*=}" "" "" || exit 1; done
+        else
+            for spec in $layer; do
+                name=${spec%%=*}; rest=${spec#*=}; mnt=${rest%%:*}; low=${rest#*:}
+                run_system "$rep" "$name" "$mnt/bench" "$mnt" "$low" || exit 1
+            done
+        fi
+    done
+    r=$((r + 1))
+done
+if command -v python3 > /dev/null 2>&1; then
+    python3 "$REPORT" --out "$out/report" "$out"/rep* | tee "$out/report.txt"
+else
+    log "python3 absent: run bench/report.py --out $out/report $out/rep* on a host to produce results.csv"
+fi
+# the W1 tree of a layer system is removed so the mount is left as it was found
+for spec in $layer; do rest=${spec#*=}; rm -rf "${rest%%:*}/bench"; done
+if true; then :
+fi
+log "BENCH_RUN_DONE: $reps repetitions, artifacts in $out"

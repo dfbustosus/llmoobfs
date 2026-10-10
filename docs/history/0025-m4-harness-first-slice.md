@@ -90,13 +90,33 @@ atualização de atributo (20%) ou um `QUERY` sorteado do arquivo de consultas (
 chamadas registradas, nenhuma falha; `make bench-smoke` cobre W8 sem raiz de montagem.
 `BENCH_LAYER_PASS` em ext4, btrfs e XFS; `MOOBFS_LAYER_PASS`.
 
+## W5, W9 e o orquestrador `run.sh` (2026-10-10)
+
+- W5 em `load`: processos 1..N-1 renomeiam cada memória da sua fatia (ida e volta) e depois a
+  removem e recriam com os mesmos bytes e atributos, enquanto o processo 0 percorre o arquivo
+  de consultas até os mutadores terminarem; registros `RENAME`, `RECREATE` e `QUERY`. Na suíte:
+  4 processos sobre a camada; ao fim, 300 arquivos, nenhum `.away`, `moobfs-check` limpo e as
+  nove formas de W3 iguais ao oráculo, nos três inferiores.
+- W9 (durabilidade e recuperação) não ganha código em `load`: é o bloco de replay
+  `dm-log-writes` e `dm-flakey` que a suíte já executa (`POWER_LOSS_REPLAY_PASS`,
+  `IO_ERROR_INJECTION_PASS`); o relatório do M4 cita esse bloco como W9.
+- `bench/run.sh`: orquestra uma campanha (dataset, `environment.txt`, por repetição e sistema:
+  W1, `diskstats` antes e depois, `GET_INFO`, `moobfs-check`, baseline SQLite, equivalência,
+  W2, W3, W4, W8, W5, W6 e W7 quando root; ordem alternada entre repetições; relatório ao fim
+  se houver Python). Sistemas: `--plain NAME=DIR` (A e B) e `--layer NAME=MOUNT:LOWER` (C).
+  Executado em modo de fumaça na suíte (60 memórias, uma repetição, só C) com os artefatos
+  conferidos. Um primeiro defeito do script (remontar a camada com `lower=<raiz>/bench` em vez
+  da raiz inferior, que quebrava o teste seguinte de fsx) foi corrigido antes do commit.
+- A medição de latência do caminho SQLite (W3 nos baselines A e B) continua ausente; `run.sh`
+  pula W3 nesses sistemas e o relatório deve dizer isso até existir o cliente em C.
+
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no
 filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5 e W9; o relatório não roda na VM (sem Python no initramfs);
-`run.sh` e a medição de latência do caminho SQLite (em C) não existem; `mountclock` virou os workloads W6/W7 do `load`.
+A medição de latência do caminho SQLite (em C) não existe; `mountclock` virou os workloads W6/W7 do `load`.
 
 ## Próximo passo
 
-W5 e W9 em `load` (W9 reutiliza o replay `dm-log-writes` da suíte); medição do baseline SQLite em C; `run.sh`; reavaliar Q9; então números
-em VM com KVM.
+Medição do baseline SQLite em C; reavaliar Q9; roteiro para um convidado Linux com aceleração
+(x86 com KVM, ou arm64 com Hypervisor.framework no Mac como campanha preliminar); então números.
