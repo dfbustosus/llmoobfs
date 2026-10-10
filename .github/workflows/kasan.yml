@@ -30,7 +30,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential flex bison libelf-dev libssl-dev bc cpio kmod \
             qemu-system-x86 qemu-utils python3-pip python3-venv udev \
-            e2fsprogs btrfs-progs xfsprogs sqlite3 git dmsetup
+            e2fsprogs btrfs-progs xfsprogs sqlite3 git dmsetup acl
           python3 -m pip install --user "virtme-ng==${VIRTME_NG_VERSION}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           ls -la /dev/kvm || echo "no KVM: QEMU will use TCG"
@@ -54,6 +54,7 @@ jobs:
           gcc -static -O2 -Wall -Wextra -Werror tests/layer.c -o build/vng/layer
           gcc -static -O2 -Wall -Wextra -Werror -Iinclude tests/query.c common/attr.c -o build/vng/query
           gcc -static -O2 -Wall -Wextra -Werror tests/ipc.c -o build/vng/ipc
+          gcc -static -O2 -Wall -Wextra -Werror tests/idmap.c -o build/vng/idmap
           gcc -static -O2 -Itests/third_party/fsx tests/third_party/fsx/fsx.c -o build/vng/fsx
           gcc -static -O2 tests/third_party/log-writes/replay-log.c tests/third_party/log-writes/log-writes.c -o build/vng/replay-log
           cp layer/moobfs_layer.ko build/vng/
