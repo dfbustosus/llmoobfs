@@ -90,5 +90,8 @@ na VM (`mount_setattr` deve falhar com `EINVAL`; `unshare -Ur` + mount deve falh
 concedem/ACL nega, travessia por ACL, ACL alterada após índice e durante consultas), e os
 testes de idmap/userns em `vm/suite.sh`.
 
-Execução local da fase 3b com a raiz do initramfs em 0755: em andamento no momento deste
-registro; resultado a anexar.
+Execução local da fase 3b com a raiz do initramfs em 0755 (`make vm-test`, kernel Debian
+6.12.111): `ISOLATION_PASS` em ext4, btrfs e XFS, inclusive o cenário de 600 candidatos
+privados com 6 autorizados; regressão inteira passou (`MOOBFS_ACCEPTANCE_PASS`,
+`MOOBFS_LAYER_PASS`), sem avisos de kernel. Pendente para fechar a fase: ACLs, idmap/userns na
+suíte, KASAN sobre a branch, e merge em `main` por pull request.
