@@ -24,6 +24,8 @@ jobs:
           make test CC=clang BUILD=build/asan
           CFLAGS='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
           LDFLAGS='-fsanitize=address,undefined'
+      - name: Fuzz the attribute encoding (libFuzzer, bounded time)
+        run: make fuzz FUZZ_TIME=30
       - name: Validate site links
         run: python3 scripts/check-site.py
   native:

@@ -178,16 +178,44 @@ int main(int argc, char **argv)
 	CHECK(same_content(up("a.txt"), lo("a.txt")));
 
 	/* xattr: opaque pass-through to the lower file */
-	CHECK(!setxattr(up("a.txt"), "user.moob.kind", "note", 4, 0));
-	CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == 4 && !memcmp(buf, "note", 4));
-	CHECK(getxattr(up("a.txt"), "user.moob.kind", buf, sizeof buf) == 4 && !memcmp(buf, "note", 4));
-	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.kind", "x", 1, XATTR_CREATE) == -1 && errno == EEXIST);
-	CHECK(!setxattr(up("a.txt"), "user.moob.kind", "decision", 8, XATTR_REPLACE));
-	CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == 8);
-	n = listxattr(up("a.txt"), buf, sizeof buf); CHECK(n > 0 && memmem(buf, (size_t)n, "user.moob.kind", 15));
+	CHECK(!setxattr(up("a.txt"), "user.other.kind", "note", 4, 0));
+	CHECK(getxattr(lo("a.txt"), "user.other.kind", buf, sizeof buf) == 4 && !memcmp(buf, "note", 4));
+	CHECK(getxattr(up("a.txt"), "user.other.kind", buf, sizeof buf) == 4 && !memcmp(buf, "note", 4));
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.other.kind", "x", 1, XATTR_CREATE) == -1 && errno == EEXIST);
+	CHECK(!setxattr(up("a.txt"), "user.other.kind", "decision", 8, XATTR_REPLACE));
+	CHECK(getxattr(lo("a.txt"), "user.other.kind", buf, sizeof buf) == 8);
+	n = listxattr(up("a.txt"), buf, sizeof buf); CHECK(n > 0 && memmem(buf, (size_t)n, "user.other.kind", 15));
+	CHECK(!removexattr(up("a.txt"), "user.other.kind"));
+	errno = 0; CHECK(getxattr(lo("a.txt"), "user.other.kind", buf, sizeof buf) == -1 && errno == ENODATA);
+	errno = 0; CHECK(getxattr(up("a.txt"), "user.other.missing", buf, sizeof buf) == -1 && errno == ENODATA);
+
+	/* typed attributes: the layer validates user.moob.* before the lower write */
+	CHECK(!setxattr(up("a.txt"), "user.moob.kind", "\x01note", 5, 0));
+	CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == 5 && !memcmp(buf, "\x01note", 5));
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.kind", "\x07x", 2, 0) == -1 && errno == EINVAL);
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.kind", "\x01\xff", 2, 0) == -1 && errno == EINVAL);
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.n", "\x02\x01", 2, 0) == -1 && errno == EINVAL);
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.b", "\x04\x02", 2, 0) == -1 && errno == EINVAL);
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.Kind", "\x01x", 2, 0) == -1 && errno == EINVAL);
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.format", "1", 1, 0) == -1 && errno == EPERM);
+	errno = 0; CHECK(removexattr(up("a.txt"), "user.moob.format") == -1 && errno == EPERM);
+	CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == 5);	/* rejected writes changed nothing */
+	errno = 0; CHECK(getxattr(lo("a.txt"), "user.moob.n", buf, sizeof buf) == -1 && errno == ENODATA);
+	CHECK(!setxattr(up("a.txt"), "user.other", "anything", 8, 0));	/* opaque namespaces untouched */
+	CHECK(!removexattr(up("a.txt"), "user.other"));
+	for (i = 1; i < 64; i++) {
+		char name[32];
+		snprintf(name, sizeof name, "user.moob.k%d", i);
+		CHECK(!setxattr(up("a.txt"), name, "\x04\x01", 2, 0));	/* needs a 4 KiB xattr block below */
+	}
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.k64", "\x04\x01", 2, 0) == -1 && errno == ENOSPC);
+	CHECK(!setxattr(up("a.txt"), "user.moob.k1", "\x04\x00", 2, 0));	/* replacing stays allowed */
+	for (i = 1; i < 64; i++) {
+		char name[32];
+		snprintf(name, sizeof name, "user.moob.k%d", i);
+		CHECK(!removexattr(up("a.txt"), name));
+	}
 	CHECK(!removexattr(up("a.txt"), "user.moob.kind"));
-	errno = 0; CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == -1 && errno == ENODATA);
-	errno = 0; CHECK(getxattr(up("a.txt"), "user.moob.missing", buf, sizeof buf) == -1 && errno == ENODATA);
 
 	/* hard links and symlinks: pass through, or refused with nolinks */
 	if (links) {

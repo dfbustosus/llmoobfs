@@ -50,7 +50,7 @@ PY
 # Lower images are sparse disks attached through virtio, not initramfs files.
 rm -f build/vm/lower-ext4.img build/vm/lower-btrfs.img build/vm/lower-xfs.img
 truncate -s 64M build/vm/lower-ext4.img
-mke2fs -q -F -t ext4 -L moob-lower build/vm/lower-ext4.img
+mke2fs -q -F -t ext4 -b 4096 -L moob-lower build/vm/lower-ext4.img
 truncate -s 256M build/vm/lower-btrfs.img
 mkfs.btrfs -q -f -L moob-lower build/vm/lower-btrfs.img
 truncate -s 300M build/vm/lower-xfs.img
@@ -64,6 +64,8 @@ Path(sys.argv[2]).write_bytes(lzma.decompress(source.read_bytes()))
 PY
 gcc -static -O2 -Wall -Wextra -Werror tests/mounted.c -o "$STAGE/mounted"
 gcc -static -O2 -Wall -Wextra -Werror tests/layer.c -o "$STAGE/layer"
+make attr-tools BUILD=build/linux CFLAGS="-O2 -g -static"
+cp build/linux/moobfs-attr build/linux/moobfs-check "$STAGE/"
 gcc -static -O2 -Itests/third_party/fsx tests/third_party/fsx/fsx.c -o "$STAGE/fsx"
 MOOB_BUILD_DIR=build/linux python3 tests/test_images.py --fixtures "$STAGE/data"
 build/linux/fsck.moobfs "$STAGE/data/shared.img" > build/vm/image-report.json

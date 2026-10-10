@@ -29,6 +29,7 @@
 #include <linux/seq_file.h>
 #include <linux/xattr.h>
 #include <linux/fiemap.h>
+#include "moobfs_attr.h"
 
 #define MOOBL_SUPER_MAGIC 0x4d4f4f42	/* "MOOB" */
 #define MOOBL_NAME "moobfs_layer"
@@ -544,6 +545,66 @@ static int moobl_xattr_get(const struct xattr_handler *handler, struct dentry *d
 			    xattr_full_name(handler, name), value, size);
 }
 
+/*
+ * Count the typed attributes already present on the lower inode. Bounded by
+ * the lower filesystem's own listxattr limits; runs only when a new typed
+ * attribute is being created.
+ */
+static int moobl_count_typed(struct dentry *lower)
+{
+	ssize_t len;
+	char *list, *p;
+	int count = 0;
+
+	len = vfs_listxattr(lower, NULL, 0);
+	if (len <= 0)
+		return len < 0 ? (int)len : 0;
+	list = kvmalloc(len, GFP_KERNEL);
+	if (!list)
+		return -ENOMEM;
+	len = vfs_listxattr(lower, list, len);
+	if (len < 0) {
+		kvfree(list);
+		return (int)len;
+	}
+	for (p = list; p < list + len; p += strlen(p) + 1)
+		if (!strncmp(p, MOOB_ATTR_PREFIX, MOOB_ATTR_PREFIX_LEN) &&
+		    !moob_attr_name_reserved(p + MOOB_ATTR_PREFIX_LEN,
+					     strlen(p) - MOOB_ATTR_PREFIX_LEN))
+			count++;
+	kvfree(list);
+	return count;
+}
+
+/* Typed attribute rules of docs/spec-m2.md §3.5, applied before the lower write. */
+static int moobl_typed_check(struct dentry *lower, const char *full, const void *value,
+			     size_t size)
+{
+	const char *name = full + MOOB_ATTR_PREFIX_LEN;
+	size_t nlen = strlen(name);
+	int err;
+
+	if (moob_attr_name_reserved(name, nlen))
+		return -EPERM;	/* user.moob.format belongs to the tools, on the lower root */
+	if (!moob_attr_name_ok(name, nlen))
+		return -EINVAL;
+	if (!value)
+		return 0;	/* removal of a well-named attribute */
+	if (size > MOOB_ATTR_VALUE_MAX || moob_attr_validate(value, size) != MOOB_ATTR_OK)
+		return -EINVAL;
+	err = vfs_getxattr(&nop_mnt_idmap, lower, full, NULL, 0);
+	if (err == -ENODATA) {
+		err = moobl_count_typed(lower);
+		if (err < 0)
+			return err;
+		if (err >= MOOB_ATTR_MAX_PER_FILE)
+			return -ENOSPC;
+	} else if (err < 0 && err != -ERANGE) {
+		return err;
+	}
+	return 0;
+}
+
 static int moobl_xattr_set(const struct xattr_handler *handler, struct mnt_idmap *idmap,
 			   struct dentry *dentry, struct inode *inode, const char *name,
 			   const void *value, size_t size, int flags)
@@ -552,6 +613,11 @@ static int moobl_xattr_set(const struct xattr_handler *handler, struct mnt_idmap
 	const char *full = xattr_full_name(handler, name);
 	int err;
 
+	if (!strncmp(full, MOOB_ATTR_PREFIX, MOOB_ATTR_PREFIX_LEN)) {
+		err = moobl_typed_check(lower, full, value, size);
+		if (err)
+			return err;
+	}
 	if (value)
 		err = vfs_setxattr(&nop_mnt_idmap, lower, full, value, size, flags);
 	else
@@ -990,6 +1056,23 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 		return -ENOMEM;
 	sbi->nolinks = ctx->nolinks;
 	sb->s_xattr = moobl_xattr_handlers;
+	{
+		/* Refuse a lower tree written by a newer encoding; absence is fine. */
+		u8 marker[16];
+		int n = vfs_getxattr(&nop_mnt_idmap, sbi->lower.dentry,
+				     MOOB_ATTR_PREFIX MOOB_ATTR_FORMAT_NAME, marker, sizeof(marker));
+
+		if (n > 0) {
+			unsigned int version = moob_attr_parse_format(marker, n);
+
+			if (!version || version > MOOB_ATTR_FORMAT_VERSION)
+				return invalfc(fc, "lower tree uses an unsupported moobfs attribute format");
+		} else if (n == -EOPNOTSUPP) {
+			pr_info("moobfs_layer: lower filesystem has no user xattr support; typed attributes unavailable\n");
+		} else if (n != -ENODATA && n != -ERANGE && n < 0) {
+			return invalfc(fc, "cannot read the moobfs format marker on the lower root");
+		}
+	}
 	sb->s_magic = MOOBL_SUPER_MAGIC;
 	sb->s_op = &moobl_sops;
 	sb->s_d_op = &moobl_dops;

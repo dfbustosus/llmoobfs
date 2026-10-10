@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- Phase 2c: typed `user.moob.*` attributes validated in the kernel (shared encoding in
+  `common/attr.c`), `moobfs-attr` and `moobfs-check` tools, host unit tests and a libFuzzer target.
 - Phase 2b: rename, links, symlinks (`nolinks` option), opaque xattr pass-through, delegated
   reflink/dedupe/copy_file_range and FIEMAP; validated over ext4, btrfs and XFS in the VM.
 - Phase 2a of the memory layer: `layer/moobfs_layer.ko`, a native stacked pass-through

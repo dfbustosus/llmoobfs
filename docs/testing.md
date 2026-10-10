@@ -7,6 +7,12 @@ The nine test methods include exact-byte sharing, distinct data, hash boundary
 sizes, an independent CRC vector, deterministic images, overwrite refusal, limits,
 128 objects and 15 malformed variants. Boundary lengths range from 0 to 65536 bytes.
 
+`make test` also runs `tests/attr_test.c`, the host unit tests of the typed attribute
+encoding shared by the kernel layer and the tools. `make fuzz FUZZ_TIME=30` runs the
+libFuzzer target in `tests/fuzz_attr.c` (LLVM clang with libFuzzer, as in CI; Apple
+clang does not ship it). `make attr-tools` builds the Linux-only `moobfs-attr` and
+`moobfs-check`.
+
 Run tools with sanitizers in a separate output directory:
 
 ```sh
@@ -68,10 +74,13 @@ The same `make vm-test` run continues after the M1 checks (see
    xattr, hard links and symlinks) and that every change is visible in `/lower` with
    the same inode numbers and bytes. `FICLONE` and `FIDEDUPERANGE` must share
    extents (visible through `FIEMAP`) on btrfs and XFS and fail cleanly on ext4.
-5. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
+5. `moobfs-attr` writes typed attributes through the layer and `moobfs-check` validates
+   the lower tree; an invalid encoding planted directly on the lower tree must be
+   reported with its reason (exit code 2).
+6. `fsx` from xfstests (vendored under `tests/third_party/fsx/`, see its README)
    runs three seeds over the layer, and the resulting file is compared with the
    lower copy.
-6. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
+7. Unmount, unload, and a `dmesg` scan for `BUG`, `Oops`, `WARNING` or `KASAN`
    close the run. Success prints one `LAYER_LOWER_PASS:` line per lower filesystem
    and a final `MOOBFS_LAYER_PASS:` marker.
 

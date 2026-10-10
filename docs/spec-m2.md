@@ -55,6 +55,11 @@ permite, avaliado caso a caso).
 Tipos: `string` (UTF-8 válido, até 1 KiB), `int64`, `double`, `bool`, `time` (ns desde epoch,
 int64), `raw` (até 4 KiB, não indexado). Nome: `[a-z0-9_.]`, 1 a 64 bytes. Até 64 atributos
 tipados por arquivo. Limites são tetos de experimento, configuráveis em compilação.
+`setxattr` com tipo inválido, tamanho fora do limite ou nome fora do alfabeto retorna `EINVAL`;
+`user.moob.format` é reservado e retorna `EPERM` pela camada. Criar o 65.º atributo tipado
+retorna `ENOSPC`. O inferior pode impor um limite menor pelo tamanho do seu bloco de xattr
+(ext4 com blocos de 1 KiB comporta cerca de 36 entradas pequenas; com 4 KiB, mais de 64), e
+esse `ENOSPC` propaga sem ser mascarado: o limite efetivo é o menor dos dois.
 
 A camada não impõe esquema. Convenções de nomes (por exemplo `kind`, `tier`, `agent`,
 `session`, `created`, `expires`) ficam em documento de recomendação para clientes, não no kernel.
@@ -120,7 +125,9 @@ Montagem `ro`: nenhuma escrita chega ao inferior; o índice é construído norma
 Na montagem: inferior inexistente, não é diretório, é o próprio ponto de montagem ou contém
 `user.moob.format` com versão maior; inferior sem suporte a xattr (`user.`) monta só com
 `index=off` e aviso. Em `setxattr`: tipo desconhecido, payload de tamanho errado para o tipo,
-UTF-8 inválido em `string`, nome fora do alfabeto, excesso de atributos. Na varredura: xattr
+UTF-8 inválido em `string` (inclui NUL, sequências longas demais, substitutos e pontos de
+código acima de U+10FFFF), `double` NaN, `bool` fora de 0/1, nome fora do alfabeto, nome
+reservado (`EPERM`), excesso de atributos (`ENOSPC`). Na varredura: xattr
 `user.moob.*` malformado em arquivo existente é registrado (`moobfs-check` lista) e o arquivo
 fica fora do índice; a montagem não falha. Em `QUERY`: operador inválido, tipo do valor
 incompatível com o atributo, mais de 4 termos, limite de resultados fora da faixa, estrutura com
@@ -161,7 +168,7 @@ importáveis pela ferramenta da seção 7.
 | --- | --- | --- |
 | 2a | Passagem mínima (wrapfs): lookup, readdir, create, read/write via `backing_file_*`, mmap, fsync, sobre ext4 | **Validada em 2026-10-10** ([registro 0011](history/0011-phase-2a-stacked-passthrough.md)): `fsx` passa e teste de passagem passa na VM; xfstests `generic` e KASAN ficam para 2b |
 | 2b | Passagem completa (rename, unlink, truncate, locks, splice, xattr opacos); btrfs e XFS como inferiores; reflink delegado | **Validada em 2026-10-10** ([registro 0012](history/0012-phase-2b-full-passthrough.md)): `FICLONE`/`FIDEDUPERANGE` funcionam sobre btrfs e XFS; xfstests completo e KASAN/lockdep ainda pendentes |
-| 2c | Codificação tipada, validação, `moobfs-check`, `moobfs-attr`, fuzzing | Entradas inválidas rejeitadas; `make test` com fuzzing |
+| 2c | Codificação tipada, validação, `moobfs-check`, `moobfs-attr`, fuzzing | **Validada em 2026-10-10** ([registro 0013](history/0013-phase-2c-typed-attributes.md)): entradas inválidas rejeitadas no kernel e pelas ferramentas; fuzzing no CI |
 | 2d | Índice em RAM, `QUERY`, `GET_INFO`, `moobfs-index` como oráculo | Consultas idênticas kernel/usuário; orçamento de memória respeitado |
 | 2e | Aceitação com git + SQLite + ai-memory; dm-log-writes; dm-flakey | Registro em `docs/history/` com comandos e números |
 

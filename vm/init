@@ -4,7 +4,7 @@ export PATH=/bin
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
-mkdir -p /mnt/moob
+mkdir -p /mnt/moob /tmp
 fail() { echo "MOOBFS_VM_FAIL: $*"; dmesg | tail -60; poweroff -f; sleep 60; }
 insmod /loop.ko || fail loop
 insmod /moobfs.ko || fail module
@@ -48,6 +48,25 @@ run_lower() {
     grep -q 'moobfs_layer' /proc/mounts || fail "layer-proc-mounts-$fs"
     mount -t moobfs_layer -o lower=/mnt/layer none /mnt && fail "layer-stack-on-itself-$fs"
     /layer /mnt/layer /lower "$reflink" links || fail "layer-tests-$fs"
+    # typed attribute tools: write through the layer, check the lower tree
+    echo memo > /mnt/layer/typed.md || fail "typed-create-$fs"
+    /moobfs-attr set /mnt/layer/typed.md kind string decision || fail "attr-set-$fs"
+    /moobfs-attr set /mnt/layer/typed.md created time 1760000000000000000 || fail "attr-time-$fs"
+    /moobfs-attr set /mnt/layer/typed.md pinned bool true || fail "attr-bool-$fs"
+    /moobfs-attr set /mnt/layer/typed.md score double 0.5 || fail "attr-double-$fs"
+    [ "$(/moobfs-attr get /mnt/layer/typed.md kind)" = "$(printf 'kind\tstring\tdecision')" ] || fail "attr-get-$fs"
+    [ "$(/moobfs-attr list /lower/typed.md | wc -l)" -eq 4 ] || fail "attr-list-lower-$fs"
+    /moobfs-attr set /mnt/layer/typed.md Bad string x 2>/dev/null && fail "attr-badname-accepted-$fs"
+    /moobfs-check /lower > /tmp/check.json || fail "check-clean-$fs"
+    grep -q '"problem_count": 0' /tmp/check.json || fail "check-count-$fs"
+    # plant an invalid encoding directly on the lower tree: the checker must flag it
+    /moobfs-attr rawset /lower/typed.md broken 0402 || fail "rawset-lower-$fs"
+    /moobfs-check /lower > /tmp/check.json; [ $? -eq 2 ] || fail "check-detects-$fs"
+    grep -q 'payload is not a valid value' /tmp/check.json || fail "check-reason-$fs"
+    /moobfs-attr get /mnt/layer/typed.md broken >/dev/null; [ $? -eq 2 ] || fail "attr-get-invalid-$fs"
+    /moobfs-attr rm /mnt/layer/typed.md broken || fail "attr-rm-$fs"
+    /moobfs-check /lower > /dev/null || fail "check-clean-again-$fs"
+    rm /mnt/layer/typed.md || fail "typed-rm-$fs"
     mkdir -p /mnt/layer/fsx
     /fsx -q -N 5000 -S 1 /mnt/layer/fsx/file1 || fail "fsx-1-$fs"
     /fsx -q -N 3000 -S 2 -r 512 -w 512 /mnt/layer/fsx/file2 || fail "fsx-2-$fs"
@@ -67,5 +86,5 @@ run_lower btrfs /dev/vdb yes
 run_lower xfs /dev/vdc yes
 rmmod moobfs_layer || fail layer-unload
 if dmesg | grep -E 'BUG:|Oops:|WARNING:|Kernel panic|KASAN:'; then fail kernel-diagnostic-layer; fi
-echo "MOOBFS_LAYER_PASS: pass-through over ext4, btrfs and xfs; layer tests; fsx 9000 ops each; reflink on btrfs/xfs; nolinks; unload"
+echo "MOOBFS_LAYER_PASS: pass-through over ext4, btrfs and xfs; layer tests; typed attributes and tools; fsx 9000 ops each; reflink on btrfs/xfs; nolinks; unload"
 poweroff -f
