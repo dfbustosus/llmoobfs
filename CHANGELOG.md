@@ -6,7 +6,8 @@
   with per-call latency records, report with percentiles and dispersion, `make bench-smoke` in
   CI. Correctness only; no performance numbers. `bench/sqlbase.sh` (SQLite baseline schema,
   composite indexes, plan gate) and `bench/equiv.sh` (kernel, SQLite and oracle must agree)
-  run in the VM suite over the layer.
+  run in the VM suite over the layer. W5, W6/W7, W8, `bench/run.sh` (campaign orchestrator)
+  and `bench/sqlclient.c` (W3 through libsqlite3 for the baselines) complete the harness.
 - `docs/project-review-2026-10-10.md`: implementation and roadmap review, static QUERY
   correctness findings, configurations requiring Linux reproduction, and a proposed
   focused benchmark and agent-memory demonstration. Analysis only; no code fixes.

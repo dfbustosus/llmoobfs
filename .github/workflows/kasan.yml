@@ -30,7 +30,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential flex bison libelf-dev libssl-dev bc cpio kmod \
             qemu-system-x86 qemu-utils python3-pip python3-venv udev \
-            e2fsprogs btrfs-progs xfsprogs sqlite3 git dmsetup acl
+            e2fsprogs btrfs-progs xfsprogs sqlite3 libsqlite3-dev git dmsetup acl
           python3 -m pip install --user "virtme-ng==${VIRTME_NG_VERSION}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           ls -la /dev/kvm || echo "no KVM: QEMU will use TCG"
@@ -51,7 +51,7 @@ jobs:
         run: |
           make layer KDIR="$PWD/build/linux"
           make attr-tools BUILD=build/vng CFLAGS="-O2 -g -static"
-          make bench-tools BUILD=build/vng CFLAGS="-O2 -g -static" && cp bench/queries-w3.txt build/vng/bench-queries-w3.txt && cp bench/sqlbase.sh build/vng/bench-sqlbase.sh && cp bench/equiv.sh build/vng/bench-equiv.sh && cp bench/run.sh build/vng/bench-run.sh
+          make bench-tools BUILD=build/vng CFLAGS="-O2 -g -static" SQLITE_LIBS="-lsqlite3 -ldl -lpthread" && cp bench/queries-w3.txt build/vng/bench-queries-w3.txt && cp bench/sqlbase.sh build/vng/bench-sqlbase.sh && cp bench/equiv.sh build/vng/bench-equiv.sh && cp bench/run.sh build/vng/bench-run.sh
           gcc -static -O2 -Wall -Wextra -Werror tests/layer.c -o build/vng/layer
           gcc -static -O2 -Wall -Wextra -Werror -Iinclude tests/query.c common/attr.c -o build/vng/query
           gcc -static -O2 -Wall -Wextra -Werror tests/ipc.c -o build/vng/ipc

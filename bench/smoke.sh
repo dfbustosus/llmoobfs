@@ -47,12 +47,18 @@ sh bench/sqlbase.sh init "$OUT/base.db"
 sh bench/sqlbase.sh load "$OUT/base.db" "$OUT/m1.txt" "$TARGET"
 [ "$(sqlite3 "$OUT/base.db" 'select count(*) from memories')" = 300 ] || fail "sqlbase row count"
 BIN=$BUILD sh bench/equiv.sh bench/queries-w3.txt "$OUT/base.db" "$TARGET" | tee "$OUT/equiv.txt" | tail -1 | grep -q '^EQUIV_PASS: 9 shapes' || fail "equivalence SQLite vs oracle"
+# the SQLite W3 client: one record per statement, row counts equal to the oracle's line counts
+grep -v '^#' bench/queries-w3.txt | while read -r q; do sh bench/sqlbase.sh sql $q; done > "$OUT/queries.sql"
+mkdir -p "$OUT/rep1/sqlite"
+"$BUILD/bench-sqlclient" --db "$OUT/base.db" --sql "$OUT/queries.sql" --out "$OUT/rep1/sqlite/w3" --repeat 2
+[ "$(wc -c < "$OUT/rep1/sqlite/w3.0.rec")" -eq $((18 * 32)) ] || fail "sqlclient record count"
 # an error must be recorded, not hidden: W2 against a missing tree
 mkdir -p "$OUT/err/plain"
 "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$OUT/missing" --workload W2 --out "$OUT/err/plain/w2" || true
 python3 bench/report.py --out "$OUT/report" "$OUT/rep1" "$OUT/rep2" > "$OUT/report.txt"
 grep -q '^plain W1 create: n=300 err=0' "$OUT/report.txt" || { cat "$OUT/report.txt"; fail "report W1 row"; }
 grep -q '^plain W4 attr_rm: n=300 err=0' "$OUT/report.txt" || fail "report W4 row"
+grep -q '^sqlite W3 query: n=18 err=0' "$OUT/report.txt" || { cat "$OUT/report.txt"; fail "report sqlite W3 row"; }
 python3 bench/report.py --out "$OUT/report-err" "$OUT/err" | grep -q 'W2 read: n=0 err=300' || fail "errors not reported"
 [ -s "$OUT/report/results.csv" ] && [ -s "$OUT/report/results.json" ] || fail "report files"
-echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4/W8 on a plain directory; moobfs-check clean; SQLite baseline equal to the oracle on 9 shapes; report with 2 repetitions"
+echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4/W8 on a plain directory; moobfs-check clean; SQLite baseline equal to the oracle on 9 shapes; SQLite W3 client recorded; report with 2 repetitions"

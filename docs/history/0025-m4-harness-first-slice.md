@@ -110,13 +110,26 @@ chamadas registradas, nenhuma falha; `make bench-smoke` cobre W8 sem raiz de mon
 - A medição de latência do caminho SQLite (W3 nos baselines A e B) continua ausente; `run.sh`
   pula W3 nesses sistemas e o relatório deve dizer isso até existir o cliente em C.
 
+## Cliente SQLite em C (2026-10-10)
+
+`bench/sqlclient.c`: executa, pela biblioteca `libsqlite3` (não pela shell), uma instrução
+preparada por linha de um arquivo SQL gerado por `sqlbase.sh sql` para as mesmas formas Q1–Q9,
+e grava um registro por instrução no mesmo formato do `QUERY` (carga 3, operação `QUERY`,
+resultado = linhas). `run.sh` usa o cliente nos sistemas `--plain` (A e B) e o `QUERY` nos
+sistemas `--layer` (C), com o mesmo `queries.sql`/`queries.txt`. A imagem da VM e o workflow
+KASAN ganharam `libsqlite3-dev`; os binários são estáticos (`-lsqlite3 -ldl -lpthread`).
+Evidência: `make bench-smoke` em contêiner (18 registros do cliente em duas repetições,
+`sqlite W3 query: n=18 err=0` no relatório) e `make vm-test` com a imagem reconstruída:
+`BENCH_LAYER_PASS` em ext4, btrfs e XFS, `MOOBFS_LAYER_PASS`. Com isto o harness cobre tudo o
+que `docs/benchmark-harness.md` pede; o que falta é hardware acelerado para medir.
+
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no
 filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5 e W9; o relatório não roda na VM (sem Python no initramfs);
-A medição de latência do caminho SQLite (em C) não existe; `mountclock` virou os workloads W6/W7 do `load`.
+`mountclock` virou os workloads W6/W7 do `load`.
 
 ## Próximo passo
 
-Medição do baseline SQLite em C; reavaliar Q9; roteiro para um convidado Linux com aceleração
-(x86 com KVM, ou arm64 com Hypervisor.framework no Mac como campanha preliminar); então números.
+Reavaliar Q9; roteiro para um convidado Linux com aceleração (x86 com KVM, ou arm64 com
+Hypervisor.framework no Mac como campanha preliminar); então números e o relatório do M4.

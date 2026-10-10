@@ -12,8 +12,9 @@ Q1–Q9, `EXPLAIN QUERY PLAN`) e `equiv.sh` (conjuntos de inodes iguais entre `Q
 oráculo, sem truncamento; exercitado em `vm/suite.sh` sobre a camada). `sqlbase` e `equiv` são
 shell sobre a CLI `sqlite3` para rodarem no initramfs da VM; a medição de latência do caminho
 SQLite ainda não existe e será em C. W6 e W7 são workloads do `load` (remontagem com e sem descarte do page cache até o primeiro
-`QUERY`), em vez de um `mountclock` separado. W5 está em `load`; W9 é o bloco de replay da suíte; `run.sh` orquestra a campanha. Ainda não
-implementada: a medição do baseline SQLite (cliente em C).
+`QUERY`), em vez de um `mountclock` separado. W5 está em `load`; W9 é o bloco de replay da suíte; `run.sh` orquestra a campanha;
+`sqlclient.c` mede W3 nos baselines pela biblioteca SQLite. Todos os componentes desta
+especificação existem; nenhum número foi produzido (falta hardware acelerado).
 
 Achado do portão de plano (2026-10-10, 300 inodes, perfil 16): o planejador do SQLite escolhe
 `SCAN` para Q1 (`kind = note`, 41% das linhas), Q5 (`pinned = 1 AND score < 500`) e Q9

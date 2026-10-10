@@ -26,11 +26,15 @@ $(BUILD)/moobfs-check: tools/moobfs-check.c common/attr.c include/moobfs_attr.h 
 $(BUILD)/moobfs-index: tools/moobfs-index.c tools/query-common.h common/attr.c include/moobfs_attr.h include/moobfs_ioctl.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tools/moobfs-index.c common/attr.c $(LDFLAGS) -o $@
 # M4 benchmark harness (docs/benchmark-harness.md). gen is portable; load is Linux-only.
-bench-tools: $(BUILD)/bench-gen $(BUILD)/bench-load
+bench-tools: $(BUILD)/bench-gen $(BUILD)/bench-load $(BUILD)/bench-sqlclient
 $(BUILD)/bench-gen: bench/gen.c bench/common.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) bench/gen.c -lm $(LDFLAGS) -o $@
 $(BUILD)/bench-load: bench/load.c bench/common.h tools/query-common.h common/attr.c include/moobfs_attr.h include/moobfs_ioctl.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude -Itools bench/load.c common/attr.c -lm $(LDFLAGS) -o $@
+# the SQLite client needs libsqlite3-dev; SQLITE_LIBS adds what a static link requires
+SQLITE_LIBS ?= -lsqlite3
+$(BUILD)/bench-sqlclient: bench/sqlclient.c bench/common.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) bench/sqlclient.c $(SQLITE_LIBS) -lm $(LDFLAGS) -o $@
 bench-smoke: bench-tools attr-tools
 	sh bench/smoke.sh $(BUILD)
 test: tools

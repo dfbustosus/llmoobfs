@@ -10,8 +10,8 @@
 #          [--plain NAME=DIR ...] [--layer NAME=MOUNT:LOWER ...]
 #
 # --plain  a directory on a plain filesystem (baselines A and B): W1, W2, W4, W8, SQLite
-#          baseline load and plan gate, SQLite-vs-oracle equivalence. The SQLite latency
-#          path is not measured yet (see the harness document).
+#          baseline load and plan gate, SQLite-vs-oracle equivalence, and W3 through the
+#          SQLite library (bench/sqlclient) with the SQL of the same shapes.
 # --layer  a mounted moobfs_layer root and its lower directory (system C): everything above
 #          plus W3 (QUERY), W5, W6, W7 and three-way equivalence. Run as root for W6/W7.
 # Environment: BIN (built tools, default build/host), SQLITE (default sqlite3).
@@ -58,6 +58,7 @@ log "environment recorded in $out/environment.txt"
 "$BIN/bench-gen" --seed "$seed" --inodes "$scale" --profile "$profile" --out "$out/manifest.txt"
 grep -v '^#' "$QUERIES" > "$out/queries.txt"
 [ "$profile" -eq 16 ] || sed -i.bak '/^tag1 /d' "$out/queries.txt"   # Q8 needs tag1 (profile 16)
+while read -r q; do sh "$SQLBASE" sql $q; done < "$out/queries.txt" > "$out/queries.sql"   # SQL of the same shapes
 log "manifest: $scale memories, profile $profile; $(wc -l < "$out/queries.txt" | tr -d ' ') query shapes"
 
 diskstat() { cat /proc/diskstats > "$1" 2>/dev/null || true; }
@@ -83,6 +84,9 @@ run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for pla
     "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W2 --procs "$procs" --out "$d/w2"
     if [ -n "$mount" ]; then
         "$BIN/bench-load" --queries "$out/queries.txt" --target "$target" --root "$mount" --workload W3 --out "$d/w3"
+    else
+        # W3 on a baseline: the same shapes through the SQLite library (bench/sqlclient)
+        "$BIN/bench-sqlclient" --db "$d/base.db" --sql "$out/queries.sql" --out "$d/w3"
     fi
     "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W4 --procs "$procs" --out "$d/w4"
     if [ -n "$mount" ]; then
