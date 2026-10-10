@@ -19,6 +19,15 @@ fail() {
     exit 1
 }
 echo "kernel: $(uname -r); KASAN init lines in dmesg: $(dmesg | grep -c 'KernelAddressSanitizer'); lockdep: $(grep -c . /proc/lockdep_stats 2>/dev/null || echo absent)"
+# A diagnostic emitted before anything of ours is loaded belongs to the boot of the debug
+# kernel under emulation, not to the layer; it also taints the kernel and turns lockdep off,
+# so the run would prove nothing. Report it as an environment failure (the workflow retries).
+if dmesg | grep -Eq 'BUG: KASAN|KASAN: |BUG:|Oops:|WARNING:|UBSAN:'; then
+    dmesg | grep -E -A12 'BUG: KASAN|KASAN: |BUG:|Oops:|WARNING:|UBSAN:' | head -40
+    dmesg > "$OUT/dmesg-boot.txt"
+    echo "MOOBFS_VM_ENV_FAIL: kernel diagnostic before the layer was loaded (boot of the debug kernel)"
+    exit 2
+fi
 BIN=$OUT TOOLS=$OUT/tools MODS=$OUT/nomods LOWER=/tmp/moob-lower LAYER=/tmp/moob-layer   # the 9p root is read-only
 DEV_EXT4=/dev/vda DEV_BTRFS=/dev/vdb DEV_XFS=/dev/vdc DEV_SCRATCH=/dev/vdd DEV_LOG=/dev/vde
 export BIN TOOLS MODS LOWER LAYER DEV_EXT4 DEV_BTRFS DEV_XFS DEV_SCRATCH DEV_LOG

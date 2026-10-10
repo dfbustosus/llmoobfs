@@ -72,13 +72,21 @@ jobs:
         run: |
           cd build/linux
           R="$GITHUB_WORKSPACE"
-          vng --user root --cpus 2 --memory 3G --verbose \
-            --rwdir "$R/build" \
-            --disk "$R/build/vng/lower-ext4.img" --disk "$R/build/vng/lower-btrfs.img" \
-            --disk "$R/build/vng/lower-xfs.img" --disk "$R/build/vng/scratch.img" --disk "$R/build/vng/log.img" \
-            --exec "sh $R/vm/kasan-guest.sh" 2>&1 | tee "$R/build/vng/console.log"
+          # one retry when the debug kernel itself reports a diagnostic while booting under
+          # emulation (MOOBFS_VM_ENV_FAIL); a layer failure (MOOBFS_VM_FAIL) is never retried
+          for attempt in 1 2; do
+            vng --user root --cpus 2 --memory 3G --verbose \
+              --rwdir "$R/build" \
+              --disk "$R/build/vng/lower-ext4.img" --disk "$R/build/vng/lower-btrfs.img" \
+              --disk "$R/build/vng/lower-xfs.img" --disk "$R/build/vng/scratch.img" --disk "$R/build/vng/log.img" \
+              --exec "sh $R/vm/kasan-guest.sh" 2>&1 | tee "$R/build/vng/console-$attempt.log"
+            cp "$R/build/vng/console-$attempt.log" "$R/build/vng/console.log"
+            grep -q '^MOOBFS_VM_ENV_FAIL:' "$R/build/vng/console.log" || break
+            echo "attempt $attempt: boot-time diagnostic of the debug kernel; retrying once"
+          done
           grep -q '^MOOBFS_KASAN_PASS:' "$R/build/vng/console.log"
           ! grep -q '^MOOBFS_VM_FAIL:' "$R/build/vng/console.log"
+          ! grep -q '^MOOBFS_VM_ENV_FAIL:' "$R/build/vng/console.log"
       - name: Preserve evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

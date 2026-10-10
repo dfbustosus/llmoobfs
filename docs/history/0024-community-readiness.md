@@ -175,3 +175,18 @@ busy" logo após o `umount` do dispositivo `dm-flakey`, com udev ativo no runner
 a mesma suíte passou em `main` e na branch da fase 3b. Causa provável: corrida entre o udev e a
 remoção do dispositivo. Correção: `dmsetup remove --retry` para os dois dispositivos (`lw` e
 `fl`); execução refeita pelo gatilho de pull request.
+
+## Nota de 2026-10-10: diagnóstico de boot do kernel de depuração no KASAN do PR 3
+
+Execução 38089702141: a suíte inteira passou (`IO_ERROR_INJECTION_PASS` e os demais
+marcadores), mas a varredura final do `dmesg` encontrou `BUG: KASAN: wild-memory-access in
+do_raw_spin_lock`, emitido aos 1,7 s de boot pelo processo `swapper/0`, numa interrupção durante
+`identify_cpu` (pilha: `handle_edge_irq`, `asm_common_interrupt`, `intel_unlock_cpuid_leafs`,
+`arch_cpu_finalize_init`, `start_kernel`), antes de qualquer módulo nosso. O kernel ficou
+"tainted" e desligou o lockdep, então a execução também perdeu cobertura. O mesmo kernel
+6.12.112 havia passado limpo na execução 38079499011; o runner roda o QEMU sem KVM (TCG).
+Decisão: `vm/kasan-guest.sh` verifica o `dmesg` antes de carregar a camada e, se houver
+diagnóstico, imprime `MOOBFS_VM_ENV_FAIL` e sai; o workflow repete uma vez só nesse caso e
+nunca para `MOOBFS_VM_FAIL`. O relatório de boot fica em `build/vng/dmesg-boot.txt` e nos
+artefatos. A causa no kernel de depuração sob emulação não foi investigada; fica como
+observação para a issue de infraestrutura de testes.
