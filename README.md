@@ -103,7 +103,8 @@ development. KASAN/lockdep kernel validation and performance benchmarks are pend
 
 - [Implemented disk format](docs/format-m1.md) and [testing guide](docs/testing.md).
 - [Original full MVP proposal](docs/native-mvp.md), in Portuguese; future transactional design.
-- [Architecture decisions](docs/decisions/) and [technical journal](docs/history/).
+- [Architecture decisions](docs/decisions/), [technical journal](docs/history/) and
+  [free-software ecosystem survey](docs/ecosystem.md).
 - [AI-assisted development rules](docs/ai-workflow.md), shared through `AGENTS.md`, `CLAUDE.md` and Cursor rules.
 - [Changelog](CHANGELOG.md), [governance](GOVERNANCE.md), [conduct](CODE_OF_CONDUCT.md) and [security](SECURITY.md).
 

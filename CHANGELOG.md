@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/ecosystem.md`: survey of free software relevant to testing, crash consistency,
+  kernel data structures, BFS tooling and agent memory layers.
 - ADR-0005: agent memory model (typed attributes, kernel-side attribute indexes,
   ioctl queries) with the Be File System as design reference; no code changes.
 - Clarified LLM memory/context as the project goal in both READMEs and the site,

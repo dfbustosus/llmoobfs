@@ -23,3 +23,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0003 — Base open source e GitHub](0003-open-source-github.md)
 - [0004 — Memória e contexto de LLMs como objetivo explícito](0004-llm-memory-context.md)
 - [0005 — Modelo de memória e o Be File System como referência](0005-bfs-reference-memory-model.md)
+- [0006 — Publicação da ADR-0005 e levantamento do ecossistema livre](0006-ecosystem-survey.md)
