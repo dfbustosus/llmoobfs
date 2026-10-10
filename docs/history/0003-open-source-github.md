@@ -1,6 +1,6 @@
 # 0003 — Base open source e GitHub
 
-Data: 2026-10-10. Estado: base preparada; publicação e CI remoto em verificação.
+Data: 2026-10-10. Estado: publicado; CI remoto e Pages validados.
 
 ## Pedido e escolhas
 
@@ -32,3 +32,26 @@ A porta 8080 estava ocupada; a prévia foi iniciada em 127.0.0.1:8879.
 Testes nativos e evidências estão no registro 0002. Não há repetição de testes de
 kernel para mudanças apenas documentais. CI remoto e Pages serão registrados em
 adendo com os resultados reais, sem presumir sucesso pela presença dos workflows.
+
+## Adendo — publicação autorizada e verificada
+
+O primeiro pedido de ativação do Pages retornou HTTP 422: o plano da organização
+não permite Pages nesse repositório privado. O usuário autorizou explicitamente
+“Sim, tornar público e publicar o Pages”. O repositório foi tornado público, Pages
+configurado para GitHub Actions com HTTPS e relatos privados de vulnerabilidade
+ativados (API confirmou `enabled: true`). Nenhum plano pago foi contratado.
+
+A primeira tentativa de workflow Pages falhou enquanto o site ainda não estava
+habilitado. Após a configuração, a reexecução passou. Resultados no commit `5827927`:
+
+- [CI 38058154595](https://github.com/studiomoob/llmoobfs/actions/runs/38058154595):
+  sucesso em ferramentas/sanitizers e VM nativa Linux.
+- [Pages 38058154618](https://github.com/studiomoob/llmoobfs/actions/runs/38058154618):
+  sucesso na reexecução, com site em https://studiomoob.github.io/llmoobfs/.
+- [Repositório público](https://github.com/studiomoob/llmoobfs): README, licença,
+  políticas, histórico, código, workflows e site enviados à branch `main`.
+
+A API de perfil comunitário reportou 100% dos critérios considerados por ela;
+isso não é certificação de segurança ou qualidade técnica. Os resumos permanentes
+ficam no Git; artifacts do CI têm retenção de 30 dias. O contato de segurança foi
+atualizado para incluir o canal privado do GitHub agora habilitado.
