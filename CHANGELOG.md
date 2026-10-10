@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- ADR-0005: agent memory model (typed attributes, kernel-side attribute indexes,
+  ioctl queries) with the Be File System as design reference; no code changes.
 - Clarified LLM memory/context as the project goal in both READMEs and the site,
   separating future agent workflows from the implemented read-only M1.
 - Native Linux read-only filesystem module, offline image creator and verifier.
