@@ -18,14 +18,14 @@ fail() {
     dmesg > "$OUT/dmesg.txt"
     exit 1
 }
-echo "kernel: $(uname -r) kasan=$(grep -c KASAN /proc/config.gz 2>/dev/null || zcat /proc/config.gz 2>/dev/null | grep -c '^CONFIG_KASAN=y')"
-BIN=$OUT TOOLS=$OUT/tools MODS=$OUT/nomods
+echo "kernel: $(uname -r); KASAN init lines in dmesg: $(dmesg | grep -c 'KernelAddressSanitizer'); lockdep: $(grep -c . /proc/lockdep_stats 2>/dev/null || echo absent)"
+BIN=$OUT TOOLS=$OUT/tools MODS=$OUT/nomods LOWER=/tmp/moob-lower LAYER=/tmp/moob-layer   # the 9p root is read-only
 DEV_EXT4=/dev/vda DEV_BTRFS=/dev/vdb DEV_XFS=/dev/vdc DEV_SCRATCH=/dev/vdd DEV_LOG=/dev/vde
-export BIN TOOLS MODS DEV_EXT4 DEV_BTRFS DEV_XFS DEV_SCRATCH DEV_LOG
+export BIN TOOLS MODS LOWER LAYER DEV_EXT4 DEV_BTRFS DEV_XFS DEV_SCRATCH DEV_LOG
 for d in $DEV_EXT4 $DEV_BTRFS $DEV_XFS $DEV_SCRATCH $DEV_LOG; do [ -b "$d" ] || fail "missing disk $d"; done
 . "$REPO/vm/suite.sh"
 dmesg > "$OUT/dmesg.txt"
-if grep -E 'KASAN|BUG:|Oops:|WARNING:|possible (circular|recursive) locking|INFO: (task|rcu)|UBSAN' "$OUT/dmesg.txt"; then
+if grep -E 'BUG: KASAN|KASAN: |BUG:|Oops:|WARNING:|possible (circular|recursive) locking|INFO: (task|rcu)|UBSAN:' "$OUT/dmesg.txt"; then
     echo "MOOBFS_VM_FAIL: kernel diagnostics under KASAN/lockdep"
     exit 1
 fi

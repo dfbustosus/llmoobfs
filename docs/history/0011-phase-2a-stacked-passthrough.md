@@ -61,13 +61,13 @@ inalterada na mesma execução.
 4. Bug no próprio teste: função de caminho com buffer estático único fazia `link(a, a)`.
    Corrigido com buffers rotativos.
 
-## Sobre Rust
+## Decisão: módulo em C
 
-Pergunta registrada: por que C e não Rust. Resposta: no 6.12 não há abstrações estáveis de VFS
-em Rust (o conjunto de patches de filesystems em Rust foi abandonado em 2024 e nunca entrou na
+Rust foi considerado e descartado para o módulo: no 6.12 não há abstrações estáveis de VFS em
+Rust (o conjunto de patches de filesystems em Rust foi abandonado em 2024 e nunca entrou na
 árvore); um FS empilhado depende de dezenas de helpers do VFS cujos bindings teriam de ser
 escritos à mão; e o kernel Debian alvo não é construído com `CONFIG_RUST`. Rust fica como
-alternativa a avaliar para as ferramentas de espaço de usuário da fase 2c.
+alternativa a avaliar para as ferramentas de espaço de usuário.
 
 ## Limitações
 

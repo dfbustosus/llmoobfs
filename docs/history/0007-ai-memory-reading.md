@@ -5,9 +5,8 @@ Data: 2026-10-10, America/Sao_Paulo.
 ## Pedido
 
 Entender o que `akitaonrails/ai-memory` pode contribuir e se o MoobFS seria uma opção de
-armazenamento para ele; leitura completa, inclusive do código. O usuário também perguntou se
-está certo em ver o ai-memory como projeto de nível mais alto e em cogitar pedir ao mantenedor
-que teste o MoobFS e ajude em benchmarks.
+armazenamento para ele; leitura completa, inclusive do código, incluindo a posição relativa
+dos dois projetos e o momento adequado para um contato com o mantenedor.
 
 ## Método
 

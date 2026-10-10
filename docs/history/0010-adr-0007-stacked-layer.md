@@ -4,12 +4,12 @@ Data: 2026-10-10, America/Sao_Paulo.
 
 ## Pedido
 
-Após o princípio registrado em 0009, o usuário perguntou se empilhar sobre um FS maduro perde
-novidade e se valeria manter dois caminhos (camada e FS próprio). Resposta registrada: a
+Após o princípio registrado em 0009, foi avaliado se empilhar sobre um FS maduro perde
+novidade e se valeria manter dois caminhos (camada e FS próprio). Avaliação registrada: a
 novidade (atributos tipados, índice, `QUERY`, proveniência) fica toda na camada; perde-se
 controle do layout em disco e há um teto de desempenho por dupla camada; dois caminhos em
-paralelo dividem o esforço e adiam a medição. O usuário concordou com um caminho só, com o FS
-próprio condicionado a evidência do M4, e pediu a ADR-0007 e a reescrita da especificação.
+paralelo dividem o esforço e adiam a medição. Decisão do usuário: um caminho só, com o FS
+próprio condicionado a evidência do M4; ADR-0007 e reescrita da especificação.
 
 ## Mudanças
 

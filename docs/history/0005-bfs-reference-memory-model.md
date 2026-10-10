@@ -5,9 +5,9 @@ Data: 2026-10-10, America/Sao_Paulo.
 ## Pedido
 
 Retomar o projeto distinguindo o objetivo (memória/contexto para LLMs) do M1 implementado.
-Na retomada foi apontada a lacuna: nenhum documento ligava o objetivo ao mecanismo. O usuário
-apresentou o artigo do Be File System e pediu uma ADR usando-o como referência, perguntando
-também se seria possível reutilizar o BFS em algum módulo.
+Na retomada foi apontada a lacuna: nenhum documento ligava o objetivo ao mecanismo. O Be File
+System foi adotado como referência de desenho para uma ADR, com avaliação explícita de reuso
+de código do BFS.
 
 ## Decisão
 

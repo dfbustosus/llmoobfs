@@ -1,11 +1,11 @@
 # 0017 — Uso no macOS e postura de segurança comparada ao mercado
 
-Data: 2026-10-10, America/Sao_Paulo. Estado: **perguntas e respostas**; nenhuma mudança de
-código. Registro de três perguntas do usuário e das respostas dadas, com as fontes consultadas.
+Data: 2026-10-10, America/Sao_Paulo. Estado: levantamento e decisões; nenhuma mudança de
+código. Fontes consultadas listadas em cada seção.
 
-## Pergunta 1: "Como seria utilizar isso no Mac?"
+## Uso no macOS
 
-Resposta: não roda nativamente. A camada é um módulo do kernel Linux (`layer/moobfs_layer.ko`)
+Decisão: não há suporte nativo no Mac. A camada é um módulo do kernel Linux (`layer/moobfs_layer.ko`)
 sobre ext4, btrfs ou XFS. O macOS usa XNU, kexts de terceiros estão em desuso e exigem reduzir a
 segurança no Apple Silicon; FSKit é em espaço de usuário, a abordagem que a ADR-0001 descarta.
 
@@ -25,7 +25,7 @@ Formas de uso no Mac:
 
 Suporte nativo no Mac seria uma nova ADR (FSKit ou kext), não uma extensão.
 
-## Pergunta 2: "Quais os mecanismos de segurança? É padrão de mercado? Exploit de kernel, leitura de memória inválida, guardrails?"
+## Postura de segurança atual
 
 Levantamento do que o repositório tem (verificado em `layer/`, `.github/workflows/ci.yml`,
 `vm/`, `docs/testing.md`):
@@ -47,7 +47,7 @@ ADR; `SECURITY.md`, sparse, smatch e checkpatch no CI; assinatura do módulo e S
 usuários finais. "Guardrails" no sentido de LLM não cabem na camada: é armazenamento; política de
 conteúdo fica no cliente.
 
-## Pergunta 3: "Pesquise em artigos, no mercado, em projetos com essas mesmas características"
+## Referências de mercado e literatura
 
 Fontes consultadas em 2026-10-10 (busca na web; resumos, não leitura integral):
 
@@ -85,9 +85,9 @@ para o patamar de mercado: fstests, syzkaller sobre os ioctls e o `setxattr`, fu
 como entrada hostil, modelo de ameaça e de credenciais escrito, `FS_USERNS_MOUNT` explicitamente
 desligado, e processo de divulgação.
 
-## Pedido 4: "Salve todas as técnicas para um roadmap futuro"
+## Roadmap de segurança
 
-Criado `docs/security-roadmap.md` com estado atual verificado, onze itens S1 a S11 com
+Decisão: consolidar as técnicas num roadmap próprio. Criado `docs/security-roadmap.md` com estado atual verificado, onze itens S1 a S11 com
 precedente, passos e critério de pronto, e o que fica fora de escopo. Linha transversal
 adicionada em `ROADMAP.md` e entrada no `CHANGELOG.md`.
 
