@@ -1,6 +1,9 @@
 # ADR-0006 — M2 com escrita POSIX sobre infraestrutura do kernel
 
-Data: 2026-10-10. Estado: proposto; aceito pelo usuário como direção. Nada implementado.
+Data: 2026-10-10. Estado: **substituída pela [ADR-0007](0007-stacked-memory-layer.md)** em
+2026-10-10, no mesmo dia, antes de qualquer implementação. Preservada como registro da forma
+"volume completo"; os requisitos de escrita POSIX, aceitação com cliente real e reuso de
+infraestrutura do kernel continuam válidos e foram transportados para a ADR-0007.
 
 ## Contexto
 

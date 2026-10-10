@@ -20,6 +20,15 @@ do kernel alvo (`=y` embutido, `=m` módulo carregável).
 | Checksums | `lib/crc32c`, `crypto/sha256` | Universal | sim | Já usados pelo M1. |
 | Estruturas em memória | `lib/btree.c`, maple tree, xarray, rbtree | Universal | sim | Para o índice de atributos em RAM do M2; B+ tree em disco fica para depois. |
 
+## Filesystems empilhados (adendo 2026-10-10, ADR-0007)
+
+| Necessidade | Infraestrutura | Na VM | Observações verificadas no v6.12 |
+| --- | --- | --- | --- |
+| Delegar read/write/mmap/splice a um arquivo do FS inferior | `fs/backing-file.c`: `backing_file_open`, `backing_file_read_iter`, `backing_file_write_iter`, `backing_file_mmap`, `backing_file_splice_read/write` | VFS | Exportados `_GPL`; usados por overlayfs (11 chamadas em `fs/overlayfs/file.c`) e pelo passthrough do FUSE |
+| Modelo de referência de FS empilhado gravável | overlayfs (`fs/overlayfs/`, ~12,5 mil linhas) | `CONFIG_OVERLAY_FS=m` | Credenciais do montador via `override_creds`, regras sobre modificação do inferior, suporte em xfstests (`./check --fs overlay`) |
+| Modelo de referência de FS empilhado 1:1 | ecryptfs (`fs/ecryptfs/`, ~8,2 mil linhas) | `CONFIG_ECRYPT_FS=m` | Um inode da camada por inode inferior; passagem de xattr |
+| Reflink/dedup delegados | `vfs_clone_file_range`, `vfs_dedupe_file_range_one` | VFS | Chamados sobre os arquivos inferiores; `EOPNOTSUPP` em ext4 |
+
 ## Testar com (não escrever harness próprio)
 
 | Necessidade | Ferramenta | Na VM |
@@ -37,7 +46,7 @@ do kernel alvo (`=y` embutido, `=m` módulo carregável).
 - **B+ tree em disco genérica**: não existe. Cada FS tem a sua. `fs/befs/btree.c` (leitura) e o livro do BFS são referência; o M2 começa sem índice persistente.
 - **Buffer heads para dados**: ext2/ext3 usam; o M1 já escolheu iomap. Ver questão aberta abaixo.
 
-## Questão aberta que a especificação do M2 precisa testar cedo
+## Questão aberta da forma "volume completo" (ADR-0006, superada)
 
 Não há FS in-tree que combine **iomap para dados bufferizados** com **jbd2 para metadados**:
 ext4 usa jbd2 com buffer heads nos dados bufferizados; XFS e GFS2 usam iomap com log próprio.

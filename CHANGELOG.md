@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- ADR-0007 supersedes ADR-0006: MoobFS becomes a native stacked memory layer over a mature
+  filesystem; `docs/spec-m2.md` rewritten accordingly, previous version preserved. Proposal only.
 - Journal 0009: differentiation analysis and the "build on mature software, innovate only in
   LLM-memory features" principle; open question whether M2 becomes a stacked filesystem.
 - ADR-0006 and `docs/spec-m2.md`: M2 specified as a writable POSIX volume on jbd2 + iomap with
