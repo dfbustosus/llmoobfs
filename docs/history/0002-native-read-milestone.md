@@ -12,6 +12,7 @@ Criar imagem MoobFS e módulo nativo que monte no Linux e leia dois arquivos com
 - Confirmados macOS arm64 e Docker Desktop com backend Linux arm64.
 - Escolhido formato experimental M1 somente para leitura, distinguido do MVP transacional proposto.
 - A validação será feita em kernel próprio de uma VM, sem carregar módulo no kernel do Docker Desktop.
+- Durante a execução, o usuário pediu regras para Claude, Cursor e Codex. Foram criados `CLAUDE.md` e `.cursor/rules/project-history.mdc`, com `AGENTS.md` como política comum, e `docs/ai-workflow.md` como guia.
 
 ## Resultados
 
