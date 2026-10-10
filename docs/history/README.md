@@ -21,3 +21,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0001 — Origem e definição do projeto](0001-origin.md)
 - [0002 — Primeiro marco nativo](0002-native-read-milestone.md)
 - [0003 — Base open source e GitHub](0003-open-source-github.md)
+- [0004 — Memória e contexto de LLMs como objetivo explícito](0004-llm-memory-context.md)

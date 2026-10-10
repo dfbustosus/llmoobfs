@@ -1,16 +1,31 @@
 # MoobFS
 
-**An experimental native Linux filesystem for exploring persistent LLM memory.**
+**An experimental native Linux filesystem for LLM memory and context.**
 
 [Português](README.pt-BR.md) · [Project site](https://studiomoob.github.io/llmoobfs/) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
 [![CI](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml)
 [![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-blue)](LICENSE)
 
-MoobFS investigates a simple storage primitive: separate files can reference the
-same immutable bytes. The first milestone implements this in an actual mountable
-Linux kernel module. Applications read ordinary files through the VFS; no FUSE
-process is involved.
+## Project goal
+
+MoobFS aims to provide a filesystem-level storage foundation for persistent memory
+and context consumed by LLM-based agents. The intended use is to retain memories
+such as observations, decisions and task records across sessions, share repeated
+content and eventually preserve revisions that agents can retrieve as context.
+
+The filesystem stores and exposes memory as files. The agent application is
+responsible for selecting relevant material and assembling the LLM's context.
+Semantic retrieval and context assembly still need to be designed and integrated;
+MoobFS does not currently provide them or extend a model's context window.
+
+## Implemented today: the read-only M1 milestone
+
+The first milestone validates a storage primitive for that goal: separate files
+can reference the same immutable bytes. An offline tool creates the image, and a
+native Linux kernel module mounts it and serves ordinary file reads through the
+VFS, without a FUSE process. The fixture below demonstrates physical sharing,
+not a complete agent memory workflow.
 
 ```text
 alpha.txt  →  inode 2  ─┐
