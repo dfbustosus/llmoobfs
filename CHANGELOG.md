@@ -8,5 +8,7 @@
 - Tool tests and isolated QEMU mount tests, including malformed images and read-only enforcement.
 - Project history, architecture decisions and shared Codex, Claude and Cursor rules.
 - GPL-2.0-only license for the entire project.
+- English/Portuguese README, contribution, governance, security and conduct policies.
+- Issue/PR templates, pinned CI actions and a static GitHub Pages site with a reproduction guide.
 
 This is an experimental milestone, not a stable release or the complete transactional MVP.

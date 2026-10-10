@@ -1,0 +1,19 @@
+name: Proposal or question
+description: Discuss an idea, architecture change or usage question.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Problem or question
+      description: What are you trying to do, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach and alternatives
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation and compatibility
+      description: How could we evaluate this? Would it change the image format or supported kernel?
