@@ -1,24 +1,117 @@
 # Security policy
 
-MoobFS is experimental kernel code. There is no supported stable release and no
-production security guarantee. Current development targets the `main` branch.
-Use a disposable VM, synthetic fixtures and an immutable backing image.
+MoobFS is experimental kernel code developed by a single maintainer. There is no
+released version, no production security guarantee and no stable UAPI. Run it
+only in a disposable VM with synthetic data. This policy describes how to report
+a problem and what to expect; the longer-term plan is in
+[docs/security-roadmap.md](docs/security-roadmap.md) (items S1 to S11, most of
+them not implemented yet).
 
-## Report a vulnerability privately
+## Supported versions
 
-Email **claudio@studiomoob.com** with a description, affected commit/kernel,
-reproduction steps, potential impact and a minimal non-sensitive fixture if needed.
-Do not post exploit details, credentials or real memory contents in a public issue.
-For large or sensitive material, first arrange a suitable transfer method by email.
+| Version | Supported |
+| --- | --- |
+| Releases | None exist. |
+| `main` | Fixes land here only. There are no backports and no maintenance branches. |
 
-We will investigate and coordinate a fix and disclosure when possible. This small
-project does not promise a response deadline or operate a bounty program. You can also use [GitHub private vulnerability reporting](https://github.com/studiomoob/llmoobfs/security/advisories/new),
-which is enabled for this repository. Email remains an alternative contact.
+## How to report a vulnerability
+
+Report privately. Do **not** open a public issue, pull request or discussion.
+
+1. Preferred: [GitHub Security Advisories](https://github.com/studiomoob/llmoobfs/security/advisories/new)
+   (private vulnerability reporting for this repository).
+2. Alternative: email **claudio@studiomoob.com**. For large or sensitive
+   material, first ask by email how to transfer it.
+
+Please include, as far as you can:
+
+- the commit SHA you tested;
+- the kernel version (`uname -r`) and whether it was the harness kernel
+  (Debian `6.12.111+deb13-amd64`, or upstream 6.12.112 under KASAN) or another;
+- the lower filesystem (ext4, btrfs, XFS, other) and the exact mount options
+  (`lower=`, `nolinks`, `noindex`, `index_budget=`);
+- the relevant `dmesg` excerpt (`BUG`, `WARNING`, `KASAN`, `UBSAN`, lockdep);
+- a minimal reproducer (commands, a small `tests/*.c` change or a `vm/suite.sh`
+  step), with synthetic data only: no real agent memories, credentials or
+  personal data;
+- the impact you believe it has (crash, hang, corruption, data loss, information
+  disclosure across users, privilege escalation).
+
+## What counts as a vulnerability
+
+Within scope, any of the following triggerable by an unprivileged local user or
+by a process with ordinary access to the mount:
+
+- kernel crash, hang or warning (denial of service counts, as it does for
+  in-tree filesystems);
+- out-of-bounds access, use-after-free, uninitialized memory or any sanitizer
+  report;
+- information leak between users through `QUERY`, `GET_INFO` or attribute
+  handling, including through counts or error codes;
+- silent data loss or corruption on the lower filesystem;
+- privilege escalation.
+
+Mounting already requires `CAP_SYS_ADMIN` in the initial user namespace, so
+behaviour that only a mounter can trigger is a bug, not an escalation, unless it
+crosses into another user's data.
+
+## Scope
+
+In scope:
+
+- the stacked layer module (`layer/`), including the `QUERY` and `GET_INFO`
+  ioctls (`include/moobfs_ioctl.h`) and the typed-attribute validation;
+- the shared attribute encoding and image parser (`common/`, `include/`);
+- the user-space tools (`tools/`: `mkfs.moobfs`, `fsck.moobfs`, `moobfs-attr`,
+  `moobfs-check`, `moobfs-index`);
+- the VM harness (`vm/`) when a defect affects whoever runs it, for example
+  writing outside `build/` or loading a module on the host;
+- the read-only M1 module (`kernel/`), kept as a regression.
+
+Out of scope:
+
+- defects in the lower filesystems (ext4, btrfs, XFS), in the Debian or upstream
+  kernel, in QEMU, Docker or virtme-ng that are unrelated to the layer; report
+  them to those projects (for the kernel, follow
+  `Documentation/process/security-bugs.rst`). If a MoobFS test exposes such a
+  defect we will help with the report;
+- attacks that require already having `CAP_SYS_ADMIN` on the host;
+- the project website (`site/`) content, unless it serves active code.
+
+## Response targets
+
+These are targets for a single volunteer maintainer, not guarantees:
+
+| Step | Target |
+| --- | --- |
+| Acknowledge the report | within 7 days |
+| Initial assessment (valid, in scope, severity) | within 30 days |
+| Status update to the reporter | at least every 30 days until closed |
+| Fix | no fixed deadline; agreed with the reporter case by case |
+
+## Coordinated disclosure
+
+- The report stays private until a fix is in `main`. The reporter and the
+  maintainer agree on the disclosure date; disclosure may happen earlier if the
+  reporter agrees, or if the issue becomes public elsewhere.
+- Since there are no releases, "fixed" means a commit on `main` with a test in
+  `vm/suite.sh` or `tests/` that reproduces the problem and passes afterwards.
+- When the defect affects anyone running the module, we request a CVE through
+  GitHub's CNA from the advisory. No CVE is expected for test-only or
+  documentation code.
+- Credit is given in the advisory, in the journal entry (`docs/history/`) and in
+  `CHANGELOG.md`, with the reporter's consent and in the form they choose.
+- There is no bug bounty or other financial reward.
 
 ## Current boundaries
 
-The parser checks image structure and hashes, but checksums are not authentication.
-The module validates at mount, not continuously against external backing-device
-writes. Neither encryption nor authorization beyond ordinary VFS access is provided.
-The existing VM suite is not a complete security audit; KASAN/lockdep, fuzzing and
-broader kernel review are still needed.
+The parser checks image structure and hashes, but checksums are not
+authentication. The module validates at mount, not continuously against external
+backing-device writes. Neither encryption nor authorization beyond ordinary VFS
+access is provided; `QUERY` filters results by the caller's POSIX permissions on
+the lower tree, as tested in the VM suite, and that is the whole access model.
+The VM suite, the KASAN/lockdep workflow and the attribute fuzzer are not a
+security audit; no external audit has taken place. See
+[docs/security-roadmap.md](docs/security-roadmap.md) for the threat model (S1,
+not yet written), fstests, syzkaller, hostile-lower handling and the other open
+items.

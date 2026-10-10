@@ -1,0 +1,64 @@
+name: Review request
+description: Ask for an independent review of a delimited question (maintainer use, or propose one).
+labels: [status/review-request]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        A review request packages one bounded question with the artifacts a
+        reviewer needs. A review comment is a record, not an audit: nothing in
+        this repository should be described as "reviewed" or "audited" because
+        an issue of this kind was closed. Findings that are vulnerabilities go
+        through SECURITY.md, not through this issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - security (threat model, credentials, mount contract)
+        - concurrency (index rwsem, QUERY chunking, rename and unlink races)
+        - integrity (dm-log-writes and dm-flakey scenarios, fsync and rename ordering)
+        - UAPI (struct layout, flags, reserved fields, copy_to_user, handles)
+        - parser (attribute encoding limits, UTF-8, name alphabet)
+        - other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question for the reviewer
+      description: One delimited question with a clear "answered when" criterion. State the known limitations so the reviewer does not rediscover them.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit under review
+      description: Exact SHA; the artifacts below must come from this revision.
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Artifacts
+      description: "List with links: specification section, source files, tests, `make vm-test` log, KASAN workflow run for this commit, relevant journal entries and ADRs."
+      value: |
+        - Specification:
+        - Source files:
+        - Tests:
+        - `make vm-test` log:
+        - KASAN run:
+        - Journal entries / ADRs:
+        - Known limitations:
+    validations:
+      required: true
+  - type: textarea
+    id: recording
+    attributes:
+      label: How findings are recorded
+      description: Default is below; adjust if needed.
+      value: |
+        - Each finding becomes its own issue (or a private advisory if it is a vulnerability), linked from here.
+        - A journal entry in `docs/history/` records the review, the findings and what was changed, crediting the reviewer with their consent.
+        - A finding that changes the design gets a new ADR pointing to the one it supersedes.
+        - Closing this issue records that the question was answered; it does not state that the code is safe.

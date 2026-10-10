@@ -1,0 +1,78 @@
+name: Test failure
+description: A make target or workflow failed, in CI or locally.
+labels: [area/tests-vm]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Use this for failures of `make test`, `make fuzz`, `make vm-test` or the
+        KASAN workflow. If the failure is a kernel crash, warning or sanitizer
+        report that an unprivileged user could trigger, it may be a
+        vulnerability: use SECURITY.md instead. See docs/testing.md for what
+        each marker means.
+  - type: dropdown
+    id: target
+    attributes:
+      label: Which target or workflow failed?
+      options:
+        - make test (host)
+        - make test with ASan/UBSan
+        - make fuzz
+        - make vm-test (Native Linux VM)
+        - KASAN and lockdep workflow
+        - CI job "Tools and sanitizers"
+        - CI job "Lint"
+        - other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Git SHA that was tested.
+    validations:
+      required: true
+  - type: input
+    id: run
+    attributes:
+      label: Run id or log path
+      description: "GitHub Actions run URL, or the local log path (`build/vm/console.log`, `build/vng/console.log`, `build/vng/dmesg.txt`)."
+    validations:
+      required: true
+  - type: textarea
+    id: markers
+    attributes:
+      label: PASS/FAIL markers seen
+      description: "Paste the marker lines that appeared (for example `LAYER_LOWER_PASS: ext4 reflink=no`, `MOOBFS_VM_FAIL: query-eq-btrfs`) and name the first marker you expected but did not see."
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: excerpt
+    attributes:
+      label: Log excerpt
+      description: The failing step with surrounding context, and any `dmesg` lines with `BUG`, `WARNING`, `KASAN`, `UBSAN` or lockdep.
+      render: text
+  - type: dropdown
+    id: reproduces
+    attributes:
+      label: Does it reproduce on a second run?
+      options:
+        - Yes, every time
+        - Sometimes (flaky)
+        - No, passed on retry
+        - Not tried
+    validations:
+      required: true
+  - type: textarea
+    id: host
+    attributes:
+      label: Host and VM information
+      description: Host OS and architecture, Docker version, whether KVM was available (`/dev/kvm`) or QEMU used TCG, QEMU and virtme-ng versions if known, and `uname -r` inside the guest.
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: The logs contain no real agent memories, credentials or personal data.
+          required: true

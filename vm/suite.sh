@@ -376,7 +376,7 @@ done
 umount $LAYER || fail lw-layer-umount
 umount $LOWER || fail lw-lower-umount
 $TOOLS/dmsetup message lw 0 mark end || fail lw-mark-end
-$TOOLS/dmsetup remove lw || fail lw-remove
+$TOOLS/dmsetup remove --retry lw || fail lw-remove
 check_mark() {   # replay up to a mark; memories 1..$2 must be whole, later ones absent
     dd if=/dev/zero of=$SCRATCH bs=1M count=64 2>/dev/null || return 1
     $BIN/replay-log --log $LOGDEV --replay $SCRATCH --end-mark "$1" || return 1
@@ -420,7 +420,7 @@ sync 2>/dev/null
 $TOOLS/dmsetup suspend --noflush --nolockfs fl && dmsetup reload fl --table "0 $SZ linear $SCRATCH 0" && dmsetup resume fl || fail fl-reload-up
 umount $LAYER 2>/dev/null || true
 umount $LOWER 2>/dev/null || true
-$TOOLS/dmsetup remove fl || fail fl-remove
+$TOOLS/dmsetup remove --retry fl || fail fl-remove
 $TOOLS/e2fsck -fy $SCRATCH > /tmp/fsck.txt 2>&1; rc=$?; [ $rc -le 1 ] || { cat /tmp/fsck.txt; fail fl-fsck; }
 mount -t ext4 $SCRATCH $LOWER || fail fl-remount
 mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail fl-layer-remount
