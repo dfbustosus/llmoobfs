@@ -81,13 +81,22 @@ ext4, btrfs e XFS; a equivalência tríplice registrou um plano `SCAN` a justifi
 com a semente 11 (contra três com a semente 7 no contêiner: a escolha do planejador depende da
 distribuição gerada). Tempos não são medidas: emulação TCG.
 
+## W8: carga mista concorrente (2026-10-10)
+
+`bench/load --workload W8 --procs N [--queries FILE --root MOUNT]`: cada processo percorre sua
+fatia do manifesto e, com PRNG semeado pelo número do processo, escolhe leitura (70%),
+atualização de atributo (20%) ou um `QUERY` sorteado do arquivo de consultas (10%, só com
+`--queries` e `--root`). Suíte da VM: 10 processos sobre a camada nos três inferiores, todas as
+chamadas registradas, nenhuma falha; `make bench-smoke` cobre W8 sem raiz de montagem.
+`BENCH_LAYER_PASS` em ext4, btrfs e XFS; `MOOBFS_LAYER_PASS`.
+
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no
-filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5, W8 e W9; o relatório não roda na VM (sem Python no initramfs);
+filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5 e W9; o relatório não roda na VM (sem Python no initramfs);
 `run.sh` e a medição de latência do caminho SQLite (em C) não existem; `mountclock` virou os workloads W6/W7 do `load`.
 
 ## Próximo passo
 
-W5, W8 e W9 em `load`; medição do baseline SQLite em C; `run.sh`; reavaliar Q9; então números
+W5 e W9 em `load` (W9 reutiliza o replay `dm-log-writes` da suíte); medição do baseline SQLite em C; `run.sh`; reavaliar Q9; então números
 em VM com KVM.

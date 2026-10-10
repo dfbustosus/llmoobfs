@@ -244,6 +244,9 @@ run_lower() {
     tail -1 /tmp/bench-equiv.txt
     $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W4 --out /tmp/bench-w4 || fail "bench-w4-$fs"
     [ "$(cat /tmp/bench-w1.*.rec /tmp/bench-w2.*.rec /tmp/bench-w3.*.rec /tmp/bench-w4.*.rec | wc -c)" -eq $(( (300 + 300 + 9 + 600) * 32 )) ] || fail "bench-records-$fs"
+    # W8: mixed reads, attribute updates and queries from 10 processes; every call recorded
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --root $LAYER --queries /tmp/bench-q.txt --workload W8 --procs 10 --out /tmp/bench-w8 || fail "bench-w8-$fs"
+    [ "$(cat /tmp/bench-w8.*.rec | wc -c)" -ge $(( 300 * 32 )) ] || fail "bench-w8-records-$fs"
     # W6 (cold: page cache dropped) and W7 (warm): remount and first QUERY; the layer must be mounted again afterwards
     $BIN/bench-load --workload W6 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w6 --repeat 2 || fail "bench-w6-$fs"
     $BIN/bench-load --workload W7 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w7 --repeat 2 || fail "bench-w7-$fs"

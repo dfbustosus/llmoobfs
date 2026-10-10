@@ -8,7 +8,7 @@ set -eu
 BUILD=${1:-build/host}
 TARGET=${2:-$BUILD/bench-smoke/target}
 OUT=$BUILD/bench-smoke
-rm -rf "$OUT" && mkdir -p "$OUT/rep1/plain" "$OUT/rep2/plain" "$TARGET"
+rm -rf "$OUT" && mkdir -p "$OUT/rep1/plain" "$OUT/rep2/plain" "$OUT/rep1/w8" "$OUT/rep2/w8" "$TARGET"
 fail() { echo "BENCH_SMOKE_FAIL: $*"; exit 1; }
 
 "$BUILD/bench-gen" --seed 7 --inodes 300 --profile 16 --out "$OUT/m1.txt"
@@ -37,6 +37,9 @@ for rep in rep1 rep2; do
     # 300 creates, 300 reads, 300 + 300 attribute ops: 32 bytes each
     total=$(cat "$OUT/$rep"/plain/*.rec | wc -c)
     [ "$total" -eq $((1200 * 32)) ] || fail "record count ($total bytes)"
+    # W8 without a mount root: reads and attribute updates only, 10 processes, at least one record per memory
+    "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$TARGET" --workload W8 --procs 10 --out "$OUT/$rep/w8/mixed"
+    [ "$(cat "$OUT/$rep"/w8/*.rec | wc -c)" -ge $((300 * 32)) ] || fail "W8 record count"
 done
 # SQLite baseline: schema, load, plan gate and equivalence with the oracle on the W1 tree
 rm -f "$OUT/base.db"*
@@ -52,4 +55,4 @@ grep -q '^plain W1 create: n=300 err=0' "$OUT/report.txt" || { cat "$OUT/report.
 grep -q '^plain W4 attr_rm: n=300 err=0' "$OUT/report.txt" || fail "report W4 row"
 python3 bench/report.py --out "$OUT/report-err" "$OUT/err" | grep -q 'W2 read: n=0 err=300' || fail "errors not reported"
 [ -s "$OUT/report/results.csv" ] && [ -s "$OUT/report/results.json" ] || fail "report files"
-echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4 on a plain directory; moobfs-check clean; SQLite baseline equal to the oracle on 9 shapes; report with 2 repetitions"
+echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4/W8 on a plain directory; moobfs-check clean; SQLite baseline equal to the oracle on 9 shapes; report with 2 repetitions"
