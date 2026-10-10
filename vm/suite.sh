@@ -244,6 +244,12 @@ run_lower() {
     tail -1 /tmp/bench-equiv.txt
     $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W4 --out /tmp/bench-w4 || fail "bench-w4-$fs"
     [ "$(cat /tmp/bench-w1.*.rec /tmp/bench-w2.*.rec /tmp/bench-w3.*.rec /tmp/bench-w4.*.rec | wc -c)" -eq $(( (300 + 300 + 9 + 600) * 32 )) ] || fail "bench-records-$fs"
+    # W6 (cold: page cache dropped) and W7 (warm): remount and first QUERY; the layer must be mounted again afterwards
+    $BIN/bench-load --workload W6 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w6 --repeat 2 || fail "bench-w6-$fs"
+    $BIN/bench-load --workload W7 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w7 --repeat 2 || fail "bench-w7-$fs"
+    [ "$(cat /tmp/bench-w6.0.rec /tmp/bench-w7.0.rec | wc -c)" -eq $(( 4 * 32 )) ] || fail "bench-mount-records-$fs"
+    grep -q "moobfs_layer $LAYER\| $LAYER " /proc/mounts || fail "bench-remounted-$fs"
+    $BIN/query $LAYER info | grep -q 'flags=0x0\|flags=0 ' || fail "bench-remount-flags-$fs"
     rm -rf $LAYER/bench /tmp/bench-* || fail "bench-cleanup-$fs"
     echo "BENCH_LAYER_PASS: $fs"
     mkdir -p $LAYER/fsx

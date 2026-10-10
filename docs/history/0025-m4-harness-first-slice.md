@@ -70,13 +70,24 @@ dos índices e do `ANALYZE`. Decisão: o portão registra `SCAN` como exceção 
 medição em vez de falhar, e Q9 (existência de atributo presente em 100% das linhas) é marcada
 para reavaliação na especificação antes de medir. Fecha as issues 10 e 11 ao mesclar.
 
+## W6 e W7: remontagem com índice frio e quente (2026-10-10)
+
+`bench/load --workload W6|W7 --target MOUNT --lower DIR --queries FILE --repeat N` (root):
+desmonta, para W6 faz `sync` e escreve 3 em `/proc/sys/vm/drop_caches`, monta `moobfs_layer`
+e emite a primeira consulta do arquivo; o registro cobre `mount()` (que reconstrói o índice) e
+esse primeiro `QUERY`. Na suíte da VM, duas repetições de cada sobre o dataset de 300 memórias,
+com a camada remontada e `GET_INFO` sem flags ao final. `make vm-test`: `BENCH_LAYER_PASS` em
+ext4, btrfs e XFS; a equivalência tríplice registrou um plano `SCAN` a justificar por inferior
+com a semente 11 (contra três com a semente 7 no contêiner: a escolha do planejador depende da
+distribuição gerada). Tempos não são medidas: emulação TCG.
+
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no
 filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5, W8 e W9; o relatório não roda na VM (sem Python no initramfs);
-`mountclock`, `run.sh` e a medição de latência do caminho SQLite (em C) não existem.
+`run.sh` e a medição de latência do caminho SQLite (em C) não existem; `mountclock` virou os workloads W6/W7 do `load`.
 
 ## Próximo passo
 
-`mountclock` (W6/W7); W5, W8 e W9 em `load`; medição do baseline SQLite em C; `run.sh`;
-reavaliar Q9; então números em VM com KVM.
+W5, W8 e W9 em `load`; medição do baseline SQLite em C; `run.sh`; reavaliar Q9; então números
+em VM com KVM.

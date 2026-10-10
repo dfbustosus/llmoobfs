@@ -136,6 +136,7 @@ enum bench_op {
 	BENCH_OP_QUERY = 3,	/* W3: one QUERY ioctl */
 	BENCH_OP_ATTR_SET = 4,	/* W4: setxattr of an existing attribute */
 	BENCH_OP_ATTR_RM = 5,	/* W4: set + remove of a scratch attribute */
+	BENCH_OP_MOUNT = 6,	/* W6/W7: mount (index rebuild) until the first QUERY answers */
 };
 
 #endif

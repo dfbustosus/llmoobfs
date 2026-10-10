@@ -13,6 +13,10 @@
  *    MOOB_IOC_QUERY on --root (default: --target), limit 4096; result = count,
  *    or -EOVERFLOW when the answer was truncated.
  * W4 rewrites "score" and then sets and removes a "scratch" attribute per memory.
+ * W6/W7 (root): unmounts --target if mounted, drops the page cache for W6, mounts
+ *    moobfs_layer with lower=--lower on --target and issues the first line of
+ *    --queries; the record covers mount() plus that QUERY (index rebuilt at mount).
+ *    --repeat N repeats the cycle; result = count of the first QUERY.
  * Lines are split among --procs processes by index modulo N. One record file
  * per process: <PREFIX>.<proc>.rec, 32-byte records (struct bench_rec).
  * Errors are recorded with result = -errno and never counted as latencies.
@@ -30,12 +34,13 @@
 #include <sys/xattr.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
+#include <sys/mount.h>
 #include "common.h"
 #include "../include/moobfs_attr.h"
 #include "../tools/query-common.h"
 
-static const char *manifest, *target, *out, *queries, *root;
-static int workload, nprocs = 1;
+static const char *manifest, *target, *out, *queries, *root, *lower;
+static int workload, nprocs = 1, repeat = 1;
 static FILE *recf;
 static unsigned proc_id;
 
@@ -221,6 +226,70 @@ static int w3_queries(void)
 	return 0;
 }
 
+/* Reads the first query line of --queries into q; returns 0 or -1. */
+static int first_query(struct moob_query *q)
+{
+	FILE *qf = fopen(queries, "r");
+	char line[8192];
+	int ok = -1;
+
+	if (!qf) { perror(queries); return -1; }
+	while (fgets(line, sizeof line, qf)) {
+		char *argv[32], *save = NULL, *tok;
+		int argc = 0, n;
+
+		if (line[0] == '#' || line[0] == '\n') continue;
+		for (tok = strtok_r(line, " \t\n", &save); tok && argc < 32; tok = strtok_r(NULL, " \t\n", &save))
+			argv[argc++] = tok;
+		memset(q, 0, sizeof *q);
+		n = parse_terms(argc, argv, 0, q->terms);
+		if (n >= 1) { q->nterms = (__u32)n; ok = 0; }
+		break;
+	}
+	fclose(qf);
+	return ok;
+}
+
+static int w6_mount(void)
+{
+	struct moob_query q;
+	struct moob_query_result *res;
+	char opts[4200];
+	int r, rc = 0;
+
+	if (first_query(&q)) return 1;
+	res = calloc(MOOB_QUERY_MAX_LIMIT, sizeof *res);
+	if (!res) return 1;
+	snprintf(opts, sizeof opts, "lower=%s", lower);
+	for (r = 0; r < repeat; r++) {
+		uint64_t t0;
+		int fd, err = 0;
+		int32_t result;
+
+		umount(target);	/* ignore ENOENT/EINVAL when nothing is mounted */
+		if (workload == 6) {
+			FILE *dc;
+
+			sync();
+			dc = fopen("/proc/sys/vm/drop_caches", "w");
+			if (!dc || fputs("3\n", dc) == EOF) { perror("drop_caches"); rc = 1; }
+			if (dc) fclose(dc);
+		}
+		t0 = now_ns();
+		if (mount("none", target, "moobfs_layer", 0, opts)) { err = -errno; record(BENCH_OP_MOUNT, t0, err); rc = 1; continue; }
+		fd = open(target, O_RDONLY | O_DIRECTORY);
+		if (fd < 0) { record(BENCH_OP_MOUNT, t0, -errno); rc = 1; continue; }
+		q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT; q.results = (__u64)(uintptr_t)res;
+		q.count = 0; q.truncated = 0;
+		if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
+		else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
+		record(BENCH_OP_MOUNT, t0, result);
+		close(fd);
+	}
+	free(res);
+	return rc;
+}
+
 static int run_proc(void)
 {
 	FILE *mf;
@@ -233,8 +302,8 @@ static int run_proc(void)
 	snprintf(recname, sizeof recname, "%s.%u.rec", out, proc_id);
 	recf = fopen(recname, "wb");
 	if (!recf) { perror(recname); return 1; }
-	if (workload == 3) {
-		int r = w3_queries();
+	if (workload == 3 || workload == 6 || workload == 7) {
+		int r = workload == 3 ? w3_queries() : w6_mount();
 		fclose(recf);
 		return r ? 1 : 0;
 	}
@@ -278,16 +347,19 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[a], "--queries")) queries = argv[a + 1];
 		else if (!strcmp(argv[a], "--root")) root = argv[a + 1];
 		else if (!strcmp(argv[a], "--procs")) nprocs = atoi(argv[a + 1]);
+		else if (!strcmp(argv[a], "--lower")) lower = argv[a + 1];
+		else if (!strcmp(argv[a], "--repeat")) repeat = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--workload") && argv[a + 1][0] == 'W') workload = atoi(argv[a + 1] + 1);
 		else { fprintf(stderr, "load: unknown option %s\n", argv[a]); return 64; }
 	}
 	if (a != argc || !target || !out || nprocs < 1 || nprocs > 1024 ||
-	    !(workload == 1 || workload == 2 || workload == 3 || workload == 4) ||
-	    (workload == 3 ? !queries : !manifest)) {
-		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n");
+	    !(workload == 1 || workload == 2 || workload == 3 || workload == 4 || workload == 6 || workload == 7) ||
+	    (workload == 3 ? !queries : (workload == 6 || workload == 7) ? (!queries || !lower || repeat < 1) : !manifest)) {
+		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n"
+				"       load --workload W6|W7 --target MOUNT --lower DIR --queries FILE --out PREFIX [--repeat N]   (root)\n");
 		return 64;
 	}
-	if (nprocs == 1) { proc_id = 0; return run_proc(); }
+	if (nprocs == 1 || workload == 6 || workload == 7) { proc_id = 0; return run_proc(); }
 	for (i = 0; i < nprocs; i++) {
 		pid_t pid = fork();
 

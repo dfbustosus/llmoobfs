@@ -11,8 +11,9 @@ W4 com registro de latência por chamada), `report.py` (percentis, dispersão, C
 Q1–Q9, `EXPLAIN QUERY PLAN`) e `equiv.sh` (conjuntos de inodes iguais entre `QUERY`, SQLite e
 oráculo, sem truncamento; exercitado em `vm/suite.sh` sobre a camada). `sqlbase` e `equiv` são
 shell sobre a CLI `sqlite3` para rodarem no initramfs da VM; a medição de latência do caminho
-SQLite ainda não existe e será em C. Ainda não implementados: `mountclock` (W6/W7), W5, W8 e W9
-em `load`, `run.sh`, e a medição do baseline SQLite.
+SQLite ainda não existe e será em C. W6 e W7 são workloads do `load` (remontagem com e sem descarte do page cache até o primeiro
+`QUERY`), em vez de um `mountclock` separado. Ainda não implementados: W5, W8 e W9 em `load`,
+`run.sh`, e a medição do baseline SQLite.
 
 Achado do portão de plano (2026-10-10, 300 inodes, perfil 16): o planejador do SQLite escolhe
 `SCAN` para Q1 (`kind = note`, 41% das linhas), Q5 (`pinned = 1 AND score < 500`) e Q9
