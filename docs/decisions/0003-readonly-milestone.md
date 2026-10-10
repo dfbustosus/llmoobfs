@@ -12,7 +12,7 @@ Criar um formato experimental de imagem somente para leitura, com superbloco, ta
 
 Cada arquivo tem inode próprio; entradas distintas podem apontar para o mesmo objeto físico. A ferramenta offline agrupa somente bytes idênticos. O módulo verifica estrutura, checksums e conteúdo durante a montagem, e serve leituras pelo cache de páginas/iomap.
 
-Começar com namespace plano, até 128 arquivos/objetos, nomes de até 63 bytes e objetos de até 64 KiB. Uma imagem publicada é imutável e só pode ser montada em modo de leitura. Não implementar escrita, ioctls, checkpoints ou snapshots neste marco.
+Começar com namespace plano, até 128 arquivos/objetos, nomes em ASCII imprimível de até 63 bytes e objetos de até 64 KiB. Os bytes de conteúdo não têm restrição de codificação. Uma imagem publicada é imutável e só pode ser montada em modo de leitura. Não implementar escrita, ioctls de publicação, checkpoints ou snapshots neste marco. FIEMAP serve para verificar os extents compartilhados.
 
 ## Consequências
 

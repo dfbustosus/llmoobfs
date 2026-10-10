@@ -1,7 +1,12 @@
-# Histórico de mudanças
+# Changelog
 
-## Em desenvolvimento — 2026-10-10
+## Unreleased — 2026-10-10
 
-- Registrado o desenho de um filesystem nativo montável para memória de agentes.
-- Criada a política de continuidade: Git, decisões arquiteturais e diário técnico.
-- Iniciada a implementação do primeiro marco de leitura e compartilhamento de conteúdo. Resultados serão registrados após execução.
+- Native Linux read-only filesystem module, offline image creator and verifier.
+- Independent file inodes can share one immutable payload; FIEMAP exposes sharing.
+- Versioned M1 disk format with bounded parsing, CRC32C metadata and SHA-256 content.
+- Tool tests and isolated QEMU mount tests, including malformed images and read-only enforcement.
+- Project history, architecture decisions and shared Codex, Claude and Cursor rules.
+- GPL-2.0-only license for the entire project.
+
+This is an experimental milestone, not a stable release or the complete transactional MVP.
