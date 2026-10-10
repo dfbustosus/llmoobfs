@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- Journal 0009: differentiation analysis and the "build on mature software, innovate only in
+  LLM-memory features" principle; open question whether M2 becomes a stacked filesystem.
 - ADR-0006 and `docs/spec-m2.md`: M2 specified as a writable POSIX volume on jbd2 + iomap with
   shared extents via `remap_file_range`; `docs/kernel-infrastructure.md` lists the reused kernel
   infrastructure verified against v6.12. Proposal only; no code.
