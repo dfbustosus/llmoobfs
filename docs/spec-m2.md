@@ -148,9 +148,12 @@ campos reservados não zerados. Cada caso tem teste nas ferramentas e no módulo
    - `QUERY` comparado com `moobfs-index` (mesmas consultas, mesmos resultados) e, para as
      semânticas de operador, com `bfs_shell` do Haiku;
    - reflink e dedup com `cp --reflink` e `duperemove` sobre btrfs e XFS; `EOPNOTSUPP` sobre ext4;
-   - **aceitação com cliente real**: `git init` e commits no mount, SQLite em WAL com escritor e
-     leitor concorrentes, `ai-memory` com `data_dir` no mount executando uma sessão capturada e
-     `reindex`; sucesso é `ai-memory status` consistente e `moobfs-check` limpo após desmontar.
+   - **aceitação com clientes reais que não conhecem o MoobFS**: `git init`, commits e
+     `git fsck` no mount; SQLite em WAL com escritor e leitor concorrentes e `PRAGMA
+     integrity_check`; e um cliente de memória próprio (script que grava páginas markdown por
+     tmp + `rename` + `fsync`, define atributos tipados e consulta por `QUERY`). Sucesso é
+     conteúdo íntegro e `moobfs-check` limpo após desmontar. Nenhum projeto externo de memória
+     de agentes faz parte do critério: eles entram no M4 como sistemas a comparar.
 3. KASAN e `PROVE_LOCKING` via virtme-ng antes de qualquer marco declarado.
 4. O M1 continua executado em `make vm-test` como regressão do experimento concluído.
 
@@ -170,7 +173,7 @@ importáveis pela ferramenta da seção 7.
 | 2b | Passagem completa (rename, unlink, truncate, locks, splice, xattr opacos); btrfs e XFS como inferiores; reflink delegado | **Validada em 2026-10-10** ([registro 0012](history/0012-phase-2b-full-passthrough.md)): `FICLONE`/`FIDEDUPERANGE` funcionam sobre btrfs e XFS; xfstests completo e KASAN/lockdep ainda pendentes |
 | 2c | Codificação tipada, validação, `moobfs-check`, `moobfs-attr`, fuzzing | **Validada em 2026-10-10** ([registro 0013](history/0013-phase-2c-typed-attributes.md)): entradas inválidas rejeitadas no kernel e pelas ferramentas; fuzzing no CI |
 | 2d | Índice em RAM, `QUERY`, `GET_INFO`, `moobfs-index` como oráculo | **Validada em 2026-10-10** ([registro 0014](history/0014-phase-2d-index-query.md)): dez consultas idênticas kernel/oráculo em ext4, btrfs e XFS; `noindex` e `index_budget` exercitados |
-| 2e | Aceitação com git + SQLite + ai-memory; dm-log-writes; dm-flakey | Registro em `docs/history/` com comandos e números |
+| 2e | Aceitação com git + SQLite + cliente de memória próprio; dm-log-writes; dm-flakey | Registro em `docs/history/` com comandos e números |
 
 ## 12. Questões em aberto
 

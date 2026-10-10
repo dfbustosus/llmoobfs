@@ -81,3 +81,10 @@ item 1 da ADR-0005 funcionando sobre btrfs, XFS e ext4 sem formato próprio em d
 Fase 2e: aceitação com cliente real (git, SQLite em WAL e o ai-memory sobre o mount),
 `dm-log-writes` e `dm-flakey`. Antes disso, decidir como levar git e SQLite estáticos para a
 VM (pacotes Debian no container, extraídos para o initramfs).
+
+## Adendo (2026-10-10): CI e critério da fase 2e
+
+CI do commit `42e3901` (run 38067281430): ferramentas, sanitizers, fuzzing e VM Linux nativa
+com sucesso. O usuário decidiu que o ai-memory não entra no critério de saída do M2: a fase 2e
+usa git, SQLite e um cliente de memória próprio; sistemas externos ficam para o benchmark do
+M4. Especificação e ADR-0007 anotadas.

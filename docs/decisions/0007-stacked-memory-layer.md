@@ -45,6 +45,13 @@ têm valor mensurável.
    montou, como o overlayfs. xfstests já sabe testar filesystems empilhados (`./check --fs
    overlay` é o modelo).
 
+## Nota (2026-10-10): critério de aceitação sem projetos externos
+
+O critério de aceitação herdado da ADR-0006 citava o ai-memory. Decisão do usuário: o MoobFS
+não depende de nenhum projeto externo de memória de agentes, nos dois sentidos. A aceitação do
+M2 usa git, SQLite e um cliente de memória próprio; ai-memory e os demais sistemas do
+levantamento (`docs/ecosystem.md`) entram no M4 como objetos de benchmark, não como requisito.
+
 ## Alternativas consideradas
 
 - Volume completo (ADR-0006): rejeitado pelo princípio acima; documento preservado como
