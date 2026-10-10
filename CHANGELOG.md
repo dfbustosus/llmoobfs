@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- Clarified LLM memory/context as the project goal in both READMEs and the site,
+  separating future agent workflows from the implemented read-only M1.
 - Native Linux read-only filesystem module, offline image creator and verifier.
 - Independent file inodes can share one immutable payload; FIEMAP exposes sharing.
 - Versioned M1 disk format with bounded parsing, CRC32C metadata and SHA-256 content.
