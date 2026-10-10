@@ -29,6 +29,8 @@
 #include <linux/seq_file.h>
 #include <linux/xattr.h>
 #include <linux/fiemap.h>
+#include <linux/posix_acl.h>
+#include <linux/posix_acl_xattr.h>
 #include "moobfs_attr.h"
 
 #include "moobl.h"
@@ -534,6 +536,28 @@ static int moobl_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 	return err;
 }
 
+/* ---- POSIX ACLs: delegated to the lower dentry, as ecryptfs does ------------- */
+
+static struct posix_acl *moobl_get_acl(struct mnt_idmap *idmap, struct dentry *dentry, int type)
+{
+	return vfs_get_acl(&nop_mnt_idmap, moobl_lower_dentry(dentry), posix_acl_xattr_name(type));
+}
+
+static int moobl_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
+			 struct posix_acl *acl, int type)
+{
+	struct dentry *lower = moobl_lower_dentry(dentry);
+	int err;
+
+	if (acl)
+		err = vfs_set_acl(&nop_mnt_idmap, lower, posix_acl_xattr_name(type), acl);
+	else
+		err = vfs_remove_acl(&nop_mnt_idmap, lower, posix_acl_xattr_name(type));
+	if (!err)
+		moobl_copy_attr(d_inode(dentry), d_inode(lower));
+	return err;
+}
+
 /* ---- extended attributes: opaque pass-through (typed validation is phase 2c) */
 
 static ssize_t moobl_listxattr(struct dentry *dentry, char *list, size_t size)
@@ -714,6 +738,8 @@ static const struct inode_operations moobl_dir_iops = {
 	.setattr = moobl_setattr,
 	.permission = moobl_permission,
 	.listxattr = moobl_listxattr,
+	.get_acl = moobl_get_acl,
+	.set_acl = moobl_set_acl,
 };
 
 static const struct inode_operations moobl_file_iops = {
@@ -722,6 +748,8 @@ static const struct inode_operations moobl_file_iops = {
 	.permission = moobl_permission,
 	.listxattr = moobl_listxattr,
 	.fiemap = moobl_fiemap,
+	.get_acl = moobl_get_acl,
+	.set_acl = moobl_set_acl,
 };
 
 static const struct inode_operations moobl_symlink_iops = {
@@ -1114,6 +1142,8 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	sb->s_blocksize = sbi->lower.dentry->d_sb->s_blocksize;
 	sb->s_blocksize_bits = sbi->lower.dentry->d_sb->s_blocksize_bits;
 	sb->s_flags |= SB_NOSEC;	/* lower enforces suid/sgid clearing */
+	if (sbi->lower.dentry->d_sb->s_flags & SB_POSIXACL)
+		sb->s_flags |= SB_POSIXACL;	/* ACL xattrs route to get_acl/set_acl, delegated below */
 	sb->s_iflags |= SB_I_NOEXEC | SB_I_NODEV;
 
 	root_inode = moobl_get_inode(sb, d_inode(sbi->lower.dentry));

@@ -95,3 +95,16 @@ Execução local da fase 3b com a raiz do initramfs em 0755 (`make vm-test`, ker
 privados com 6 autorizados; regressão inteira passou (`MOOBFS_ACCEPTANCE_PASS`,
 `MOOBFS_LAYER_PASS`), sem avisos de kernel. Pendente para fechar a fase: ACLs, idmap/userns na
 suíte, KASAN sobre a branch, e merge em `main` por pull request.
+
+
+## Achado da terceira rodada: ACLs POSIX não atravessavam a camada
+
+O teste de ACL pedido pela revisão falhou de imediato: `setfacl` pela camada devolvia
+"Operation not supported". Causa: no 6.12 o VFS trata `system.posix_acl_access/default` pelas
+operações `get_acl`/`set_acl` da inode (e pela flag `SB_POSIXACL` do superbloco), não pelos
+handlers de xattr; a camada só tinha o handler genérico. A afirmação anterior de que "ACLs
+chegam ao inferior pela passagem de xattr" estava errada e a revisão acertou em exigir prova.
+Correção: `moobl_get_acl`/`moobl_set_acl` delegando a `vfs_get_acl`/`vfs_set_acl`/
+`vfs_remove_acl` no dentry inferior, como o ecryptfs, e `SB_POSIXACL` herdada do inferior. A
+decisão de autorização continua delegada ao inferior; só a escrita e a leitura de ACLs pela
+camada passaram a funcionar.
