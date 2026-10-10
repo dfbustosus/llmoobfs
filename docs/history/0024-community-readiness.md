@@ -96,6 +96,7 @@ O CI do pull request desta branch é a primeira execução real dos passos de li
 - `vm/*.sh` e `vm/init` não têm linha SPDX; a verificação em CI cobre só fontes C, como o plano
   pedia. Acrescentar SPDX aos scripts é tarefa inicial (seção 4, item 13).
 - `site/index.html` não recebeu o banner (a seção 9 do plano o prevê); fica para a rodada do site.
+  Nota de 2026-10-10: feito na seção "SEO/GEO" abaixo.
 - Os commits desta branch anteriores à adoção do DCO não têm `Signed-off-by`; a verificação só
   vale no intervalo do PR e a regra não é retroativa. Se o PR incluir commits antigos sem
   sign-off, o job falhará e o mantenedor decide entre rebase com `-s` ou merge após `main`.
@@ -107,3 +108,61 @@ lockdep` (este dispara porque `.github/workflows/kasan.yml` mudou), criar os lab
 script de `docs/labels.md` e, após o merge, executar as ações 15 a 18 do plano: pedidos de
 revisão (seção 8), ADR do modelo de ameaça (S1), execução isolada em `vm/suite.sh` e KASAN
 como check obrigatório.
+
+## SEO/GEO (2026-10-10)
+
+Execução da parte de arquivos do plano aprovado em [`docs/seo-geo-plan.md`](../seo-geo-plan.md)
+(§2, §4, §5, §6, §10), com as decisões do mantenedor: o repositório permanece `llmoobfs`;
+descrição e topics já aplicados no GitHub; Discussions ativadas; a pré-release
+`v0.1.0-experimental` será criada depois pelo mantenedor, por isso os textos dizem "sem release"
+e não citam tag. Só documentação e site; nenhum código, teste ou workflow mudou.
+
+Arquivos novos:
+
+- `docs/architecture-overview.md` (EN): camada empilhada via `fs/backing-file.c`, mapeamento de
+  dentry/inode, codificação dos atributos tipados com os limites de `include/moobfs_attr.h`,
+  índice em memória (rbtree por nome, rbtree de entradas por `(tipo, valor, inode)`, xarray por
+  inode, orçamento, flags `incomplete`/`paths_stale`), UAPI v1 (`QUERY`/`GET_INFO`, lotes de 256,
+  autorização por resultado, contrato TOCTOU de `spec-m3.md` §3.1), o que é delegado, convenção de
+  identidade, opções de montagem, "nada preso"; cada afirmação cita o arquivo-fonte.
+- `docs/when-not-to-use.md` (EN): tabela comparativa derivada de `value-assessment.md`
+  (arquivos puros, SQLite, sistemas FUSE, frameworks de memória como clientes), casos em que
+  provavelmente não vale, casos em que pode valer avaliar, medições do M4 indispensáveis.
+- `docs/faq.md` (EN): as 20 perguntas da §6 do plano, revisadas contra os arquivos citados.
+- `site/faq.html` (gerado a partir de `docs/faq.md` com um script descartável; mesmo cabeçalho,
+  navegação e rodapé das outras páginas), `site/robots.txt`, `site/sitemap.xml`.
+
+Arquivos alterados:
+
+- `README.md`: ordem de seções da §4 do plano; banner e "At a glance" mantidos literalmente;
+  todos os fatos e links anteriores preservados (o conteúdo do M1 virou subseção de regressão
+  em "Try it in a VM"); novas seções "How it works", "What is implemented, with evidence",
+  "Limitations", "Compared with plain files, SQLite and memory frameworks", "Documentation map",
+  "Prior work and positioning". `README.pt-BR.md` espelha a estrutura, mais curto.
+- `site/index.html`, `site/guide.html`, `site/plan.html`: estado atual (M1, M2 2a–2e, M3 3b
+  concluídos com evidência; M4 pendente; nada lançado) segundo `ROADMAP.md`; `<title>` e meta
+  description da §2; banner experimental condensado no topo de `index.html`; `rel=canonical` e
+  `og:title`/`og:description`/`og:type`/`og:url`; link "FAQ" na navegação; diagrama do hero
+  trocado pela pilha cliente → VFS → camada → inferior.
+- `CHANGELOG.md`: entrada em Unreleased.
+
+Conteúdo desatualizado encontrado e corrigido: `plan.html` dizia que o M2 "não está
+implementado" e que o `QUERY` "devolve file handles para `open_by_handle_at`" (devolve inode e
+caminho relativo, `include/moobfs_ioctl.h`); `guide.html` dizia timeout do QEMU de 180 s (é
+600 s, `vm/in-container.sh`); a FAQ da §6 omitia o operador `EXISTS`, dizia que o
+`CONTRIBUTING.md` estava em reescrita e pedia confirmação dos "três defeitos" (confirmados:
+dois no registro 0015, um no 0016); o README antigo dizia "KASAN/lockdep pendente" sem
+distinguir que o harness KASAN cobre a suíte da camada e não o módulo M1.
+
+Verificações feitas: `python3 scripts/check-site.py` (4 páginas, links e âncoras válidos);
+links Markdown relativos de `README.md`, `README.pt-BR.md` e dos três documentos novos
+resolvidos por script; balanceamento de tags HTML das quatro páginas por `html.parser`;
+`sitemap.xml` analisado por `xml.dom.minidom`; `grep` por "first filesystem", "fastest", "most
+secure", "production-ready" (ocorre só em negação). Não verificado: renderização no GitHub
+Pages (só publica após merge em `main`), aparência no browser além de inspeção local, e as
+contagens de caracteres dos títulos para SERP. Nenhum teste de kernel foi executado: a mudança
+é só de texto.
+
+Próximo passo: revisar os textos em inglês no PR, criar a pré-release `v0.1.0-experimental`
+quando o mantenedor decidir (e então substituir "no release yet" pela referência à tag) e, após
+o merge, confirmar que o Pages serve `faq.html`, `robots.txt` e `sitemap.xml`.

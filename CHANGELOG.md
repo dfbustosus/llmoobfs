@@ -2,6 +2,18 @@
 
 ## Unreleased — 2026-10-10
 
+- SEO/GEO files (plan `docs/seo-geo-plan.md`, journal 0024): `README.md` reorganized into the
+  planned section order (banner and "At a glance" unchanged; new "How it works", "What is
+  implemented, with evidence", "Limitations", comparison, "Documentation map", "Prior work and
+  positioning"), `README.pt-BR.md` mirrored; new English pages `docs/architecture-overview.md`
+  (layer internals with source citations), `docs/when-not-to-use.md` (comparison with plain
+  files, SQLite, FUSE systems and memory frameworks; what M4 must show) and `docs/faq.md`
+  (twenty sourced answers); site updated to the current state (M1, M2 phases 2a–2e and M3
+  phase 3b done with evidence, M4 pending, nothing released) with the new title and
+  description, the experimental banner, `rel=canonical` and Open Graph tags on every page,
+  `site/faq.html`, `site/robots.txt` and `site/sitemap.xml`; stale statements fixed (`plan.html`
+  said M2 was not implemented and that `QUERY` returned file handles; `guide.html` said the QEMU
+  timeout was 180 s). Documentation only; no code, test or CI changes; no release or tag.
 - Community readiness (plan `docs/community-plan.md`, actions 1–14, journal 0024): Contributor
   Covenant 2.1 as `CODE_OF_CONDUCT.md`; `SECURITY.md` with scope, what to include, response
   targets (acknowledge in 7 days, assessment in 30, updates every 30), coordinated disclosure,
