@@ -1,0 +1,18 @@
+---
+description: Continuidade, decisões e validação do filesystem nativo MoobFS
+alwaysApply: true
+---
+
+# MoobFS — regras permanentes
+
+Leia e siga `AGENTS.md`, fonte comum das instruções do projeto. Ao iniciar trabalho, consulte `README.md`, o registro mais recente em `docs/history/` e as ADRs relevantes em `docs/decisions/`.
+
+- Preserve o requisito: filesystem montável nativo do Linux, sem FUSE.
+- Registre decisões, alternativas e justificativas técnicas resumidas; crie ADR para mudanças arquiteturais.
+- Atualize histórico e changelog com mudanças, testes realmente executados, limitações e próximo passo.
+- Preserve registros anteriores e não reescreva história Git compartilhada.
+- Diferencie compilação, verificação offline da imagem e teste real de montagem no Linux.
+- Teste módulos em VM dedicada. Não altere dispositivos existentes ou publique no GitHub sem autorização aplicável.
+- Nunca registre segredos ou alegue que instruções Markdown garantem, sozinhas, o cumprimento do processo.
+
+Se esta regra precisar mudar, revise também `AGENTS.md` e `CLAUDE.md` para manter a política consistente.
