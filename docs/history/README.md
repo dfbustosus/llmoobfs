@@ -33,3 +33,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0013 — Fase 2c: atributos tipados validados no kernel, ferramentas e fuzzing](0013-phase-2c-typed-attributes.md)
 - [0014 — Fase 2d: índice em memória e consulta por atributo (`QUERY`)](0014-phase-2d-index-query.md)
 - [0015 — Fase 2e: aceitação com clientes reais e investigação de perda de linhas no SQLite](0015-phase-2e-investigation.md)
+- [0016 — Harness com KASAN e lockdep em kernel próprio; diagrama de fluxo no site](0016-kasan-lockdep-harness.md)

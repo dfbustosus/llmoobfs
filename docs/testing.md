@@ -97,8 +97,16 @@ The same `make vm-test` run continues after the M1 checks (see
    close the run. Success prints one `LAYER_LOWER_PASS:` line per lower filesystem
    and a final `MOOBFS_LAYER_PASS:` marker.
 
-The distribution kernel still has no KASAN or lockdep; those runs belong to a
-separate virtme-ng kernel and are not implied by this harness.
+The distribution kernel has no KASAN or lockdep. Those run in a separate workflow,
+`.github/workflows/kasan.yml` (on demand with `gh workflow run kasan.yml`, and
+weekly): it downloads the pinned upstream `linux-6.12.112` tarball, verifies its
+SHA-256, lets virtme-ng generate a minimal configuration plus `vm/kasan.config`
+(KASAN, UBSAN, lockdep, the three lower filesystems, device mapper), builds the
+kernel, builds `moobfs_layer.ko` and the test binaries against it, and boots the
+kernel with the host checkout as root and five virtio disks. `vm/kasan-guest.sh`
+runs the same `vm/suite.sh` the initramfs harness uses and fails on any `KASAN`,
+`WARNING`, `BUG`, lockdep or UBSAN report in `dmesg`. Success prints
+`MOOBFS_KASAN_PASS:`; the console, `dmesg` and `.config` are kept as artifacts.
 
 ## Manual mount inside your own disposable Linux VM
 
