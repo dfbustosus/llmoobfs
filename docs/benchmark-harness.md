@@ -6,8 +6,21 @@ programas, formatos e testes que tornam o plano executável e reproduzível por 
 
 Implementado em `bench/` (registro 0025): `gen` (manifesto determinístico), `load` (W1, W2, W3,
 W4 com registro de latência por chamada), `report.py` (percentis, dispersão, CSV e JSON) e
-`smoke.sh` (`make bench-smoke`, correção do próprio harness em diretório comum, no CI). Ainda
-não implementados: `sqlbase`, `equiv`, `mountclock` (W6/W7), W5, W8 e W9 em `load`, e `run.sh`.
+`smoke.sh` (`make bench-smoke`, correção do próprio harness em diretório comum, no CI),
+`sqlbase.sh` (esquema e índices compostos do §4, carga a partir do manifesto, SQL das formas
+Q1–Q9, `EXPLAIN QUERY PLAN`) e `equiv.sh` (conjuntos de inodes iguais entre `QUERY`, SQLite e
+oráculo, sem truncamento; exercitado em `vm/suite.sh` sobre a camada). `sqlbase` e `equiv` são
+shell sobre a CLI `sqlite3` para rodarem no initramfs da VM; a medição de latência do caminho
+SQLite ainda não existe e será em C. Ainda não implementados: `mountclock` (W6/W7), W5, W8 e W9
+em `load`, `run.sh`, e a medição do baseline SQLite.
+
+Achado do portão de plano (2026-10-10, 300 inodes, perfil 16): o planejador do SQLite escolhe
+`SCAN` para Q1 (`kind = note`, 41% das linhas), Q5 (`pinned = 1 AND score < 500`) e Q9
+(`weight IS NOT NULL`, 100% das linhas), mesmo com os índices do §4.1 e `ANALYZE`, porque a
+seletividade é baixa nessa escala. O portão passou a registrar `SCAN` como exceção a justificar
+em cada medição, não como falha; a igualdade de conjuntos continua obrigatória. Q9 sobre um
+atributo presente em todas as linhas será sempre varredura em qualquer sistema; a forma deve
+ser reavaliada ou aplicada a um atributo minoritário antes do M4 medir.
 Desvio registrado: o perfil mínimo passou a chamar-se 6, não 3, porque o §3 fixa seis atributos
 em todo perfil; perfis válidos são 6, 8 e 16. Nenhum número de desempenho foi produzido.
 

@@ -52,13 +52,31 @@ KASAN. Uma primeira execução falhou em `attr-set-ext4` por binários dinâmico
 um `build/linux` deixado por um contêiner diferente; `rm -rf build/linux` resolveu (anotado em
 `docs/development.md` como cuidado ao alternar contêineres).
 
+## Fatia SQLite: `sqlbase` e `equiv` (2026-10-10)
+
+`bench/sqlbase.sh` cria o esquema e os índices compostos do §4 do harness, carrega o manifesto
+com o inode real de cada arquivo (`stat`), gera o SQL de cada forma Q1–Q9 (prefixo como
+intervalo binário, existência como `IS NOT NULL`, `raw` sem coluna) e expõe `EXPLAIN QUERY
+PLAN`. `bench/equiv.sh` compara, por forma, os conjuntos de inodes do `QUERY`, do SQLite e do
+oráculo e falha em qualquer diferença ou truncamento. Ambos em shell sobre a CLI `sqlite3`, para
+rodarem no initramfs (sem Python); decisão registrada no harness.
+
+Evidência: `make bench-smoke` em contêiner Linux (`BENCH_SMOKE_PASS`, SQLite igual ao oráculo
+nas 9 formas) e `make vm-test` (`build/vm-test-bench.log`): `BENCH_LAYER_PASS` em ext4, btrfs e
+XFS com `EQUIV_PASS: 9 shapes (kernel, SQLite, oracle)` dentro do bloco; `MOOBFS_LAYER_PASS`.
+
+Achado: com 300 linhas o SQLite planeja `SCAN` para Q1, Q5 e Q9 por baixa seletividade, apesar
+dos índices e do `ANALYZE`. Decisão: o portão registra `SCAN` como exceção a justificar na
+medição em vez de falhar, e Q9 (existência de atributo presente em 100% das linhas) é marcada
+para reavaliação na especificação antes de medir. Fecha as issues 10 e 11 ao mesclar.
+
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no
 filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5, W8 e W9; o relatório não roda na VM (sem Python no initramfs);
-`sqlbase`, `equiv`, `mountclock` e `run.sh` não existem.
+`mountclock`, `run.sh` e a medição de latência do caminho SQLite (em C) não existem.
 
 ## Próximo passo
 
-W3 na suíte da VM contra a camada com equivalência ao oráculo; `sqlbase` com `EXPLAIN QUERY
-PLAN`; `equiv`; `mountclock`; então números em VM com KVM.
+`mountclock` (W6/W7); W5, W8 e W9 em `load`; medição do baseline SQLite em C; `run.sh`;
+reavaliar Q9; então números em VM com KVM.

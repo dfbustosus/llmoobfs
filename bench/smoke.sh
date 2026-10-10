@@ -38,6 +38,12 @@ for rep in rep1 rep2; do
     total=$(cat "$OUT/$rep"/plain/*.rec | wc -c)
     [ "$total" -eq $((1200 * 32)) ] || fail "record count ($total bytes)"
 done
+# SQLite baseline: schema, load, plan gate and equivalence with the oracle on the W1 tree
+rm -f "$OUT/base.db"*
+sh bench/sqlbase.sh init "$OUT/base.db"
+sh bench/sqlbase.sh load "$OUT/base.db" "$OUT/m1.txt" "$TARGET"
+[ "$(sqlite3 "$OUT/base.db" 'select count(*) from memories')" = 300 ] || fail "sqlbase row count"
+BIN=$BUILD sh bench/equiv.sh bench/queries-w3.txt "$OUT/base.db" "$TARGET" | tee "$OUT/equiv.txt" | tail -1 | grep -q '^EQUIV_PASS: 9 shapes' || fail "equivalence SQLite vs oracle"
 # an error must be recorded, not hidden: W2 against a missing tree
 mkdir -p "$OUT/err/plain"
 "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$OUT/missing" --workload W2 --out "$OUT/err/plain/w2" || true
@@ -46,4 +52,4 @@ grep -q '^plain W1 create: n=300 err=0' "$OUT/report.txt" || { cat "$OUT/report.
 grep -q '^plain W4 attr_rm: n=300 err=0' "$OUT/report.txt" || fail "report W4 row"
 python3 bench/report.py --out "$OUT/report-err" "$OUT/err" | grep -q 'W2 read: n=0 err=300' || fail "errors not reported"
 [ -s "$OUT/report/results.csv" ] && [ -s "$OUT/report/results.json" ] || fail "report files"
-echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4 on a plain directory; moobfs-check clean; report with 2 repetitions"
+echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4 on a plain directory; moobfs-check clean; SQLite baseline equal to the oracle on 9 shapes; report with 2 repetitions"

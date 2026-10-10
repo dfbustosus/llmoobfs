@@ -236,6 +236,12 @@ run_lower() {
     done < /tmp/bench-q.txt
     [ "$nq" -eq 9 ] || fail "bench-w3-shapes-$fs"
     $BIN/bench-load --queries /tmp/bench-q.txt --target $LAYER/bench --root $LAYER --workload W3 --out /tmp/bench-w3 || fail "bench-w3-$fs"
+    # SQLite baseline next to the files: plan gate (SEARCH, never SCAN) and three-way equivalence
+    rm -f /tmp/bench-base.db*
+    SQLITE=$TOOLS/sqlite3 sh $BIN/bench-sqlbase.sh init /tmp/bench-base.db || fail "bench-sqlbase-init-$fs"
+    SQLITE=$TOOLS/sqlite3 sh $BIN/bench-sqlbase.sh load /tmp/bench-base.db /tmp/bench-m.txt $LAYER/bench || fail "bench-sqlbase-load-$fs"
+    env SQLITE=$TOOLS/sqlite3 SQLBASE=$BIN/bench-sqlbase.sh BIN=$BIN sh $BIN/bench-equiv.sh $BIN/bench-queries-w3.txt /tmp/bench-base.db $LOWER/bench $LAYER | tee /tmp/bench-equiv.txt | tail -1 | grep -q '^EQUIV_PASS: 9 shapes (kernel' || { cat /tmp/bench-equiv.txt; fail "bench-equiv-$fs"; }
+    tail -1 /tmp/bench-equiv.txt
     $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W4 --out /tmp/bench-w4 || fail "bench-w4-$fs"
     [ "$(cat /tmp/bench-w1.*.rec /tmp/bench-w2.*.rec /tmp/bench-w3.*.rec /tmp/bench-w4.*.rec | wc -c)" -eq $(( (300 + 300 + 9 + 600) * 32 )) ] || fail "bench-records-$fs"
     rm -rf $LAYER/bench /tmp/bench-* || fail "bench-cleanup-$fs"

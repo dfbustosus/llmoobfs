@@ -4,7 +4,9 @@
 
 - `bench/`: first slice of the M4 harness: deterministic manifest generator, loader for W1-W4
   with per-call latency records, report with percentiles and dispersion, `make bench-smoke` in
-  CI. Correctness only; no performance numbers.
+  CI. Correctness only; no performance numbers. `bench/sqlbase.sh` (SQLite baseline schema,
+  composite indexes, plan gate) and `bench/equiv.sh` (kernel, SQLite and oracle must agree)
+  run in the VM suite over the layer.
 - `docs/project-review-2026-10-10.md`: implementation and roadmap review, static QUERY
   correctness findings, configurations requiring Linux reproduction, and a proposed
   focused benchmark and agent-memory demonstration. Analysis only; no code fixes.
