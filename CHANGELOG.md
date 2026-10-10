@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/benchmark-plan.md`: M4 benchmark methodology, baselines and the real clients used as
+  workloads; M3 scope gains agent/namespace isolation, batch reads and a change cursor.
 - `docs/security-roadmap.md`: proposed list of security and robustness techniques for the layer
   (threat model, fstests, syzkaller, hostile lower, static analysis, disclosure policy,
   hardening, resource limits, module signing), with current state and sources; linked from

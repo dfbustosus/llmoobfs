@@ -80,12 +80,17 @@ mantém fora do kernel.
 | [Letta](https://github.com/letta-ai/letta) | Runtime onde o agente é a memória (MemGPT); camadas core/arquivo | Memória arquival pode ser montada como diretório. |
 | [Graphiti](https://github.com/getzep/graphiti) | Grafo de conhecimento temporal (equipe Zep) | Fatos com validade temporal mapeiam bem em revisões + atributo `time`. |
 | [cognee](https://github.com/topoteretes/cognee) | Ingestão de documentos variados em grafo consultável | Idem; cliente. |
+| [letta-code](https://github.com/letta-ai/letta-code) (Apache-2.0) | Memória de agente de código em arquivos, com git | Cliente e carga realista para o M4; referência de organização de memória em diretórios. |
+| [Agent VFS](https://github.com/johannesmichalke/agent-vfs) | Filesystem virtual em espaço de usuário com persistência em banco | Referência de interface para agentes; não é módulo de kernel nem concorrente da camada. |
+| [Microsoft GraphRAG](https://github.com/microsoft/graphrag) (MIT) | Pipeline de conhecimento: entidades, relações, comunidades | Fonte de datasets de atributos e relações para cargas de `QUERY`; não é armazenamento. |
 | [ai-memory](https://github.com/akitaonrails/ai-memory) (MIT, Rust) | Wiki markdown em git como fonte de verdade, SQLite derivado, captura por hooks, zero LLM por padrão | Cliente mais próximo do nosso modelo: fonte de verdade em arquivos. Leitura completa em [research-ai-memory.md](research-ai-memory.md). |
 
 Comparações publicadas em 2026 são majoritariamente de fornecedores; nenhuma medição
 independente foi encontrada. O M4 deve definir suas próprias métricas.
 
 ## 7. Busca vetorial local
+
+Plano de medição com esses sistemas: [benchmark-plan.md](benchmark-plan.md).
 
 | Projeto | Licença | Uso |
 | --- | --- | --- |
