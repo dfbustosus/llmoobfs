@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Phase 2a acceptance test for the MoobFS memory layer: exercises the
+ * Phase 2a/2b acceptance test for the MoobFS memory layer: exercises the
  * pass-through operations on a mounted layer and checks that the lower
- * directory reflects every change. Usage: layer <mount> <lower>
+ * directory reflects every change. Usage: layer <mount> <lower> <reflink: yes|no> <links|nolinks>
  */
 #define _GNU_SOURCE
 #include <sys/types.h>
@@ -10,6 +10,10 @@
 #include <sys/mman.h>
 #include <sys/statfs.h>
 #include <sys/uio.h>
+#include <sys/ioctl.h>
+#include <sys/xattr.h>
+#include <linux/fs.h>
+#include <linux/fiemap.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -43,6 +47,22 @@ static int same_content(const char *a, const char *b)
 	return na == nb && na >= 0 && !memcmp(x, y, (size_t)na);
 }
 
+static int shared_extent(const char *path)
+{
+	struct fiemap *map = calloc(1, sizeof(*map) + 4 * sizeof(struct fiemap_extent));
+	int fd = open(path, O_RDONLY), shared = 0;
+	unsigned i;
+	if (!map || fd < 0) return -1;
+	map->fm_length = ~0ULL; map->fm_extent_count = 4;
+	if (ioctl(fd, FS_IOC_FIEMAP, map) == 0) {
+		for (i = 0; i < map->fm_mapped_extents; i++)
+			if (map->fm_extents[i].fe_flags & FIEMAP_EXTENT_SHARED) shared = 1;
+	} else {
+		shared = -1;
+	}
+	close(fd); free(map); return shared;
+}
+
 static int count_entries(const char *dir)
 {
 	DIR *d = opendir(dir); struct dirent *e; int n = 0;
@@ -59,7 +79,10 @@ int main(int argc, char **argv)
 	int fd, i;
 	ssize_t n;
 
-	CHECK(argc == 3);
+	int reflink, links;
+	CHECK(argc == 5);
+	reflink = !strcmp(argv[3], "yes");
+	links = !strcmp(argv[4], "links");
 	snprintf(mnt, sizeof mnt, "%s", argv[1]);
 	snprintf(low, sizeof low, "%s", argv[2]);
 
@@ -136,11 +159,90 @@ int main(int argc, char **argv)
 	CHECK(!chmod(up("a.txt"), 0600));
 	CHECK(!stat(lo("a.txt"), &lst) && (lst.st_mode & 07777) == 0600);
 
-	/* unsupported in phase 2a: links and renames are refused, not faked */
-	errno = 0; CHECK(link(up("a.txt"), up("b.txt")) == -1 && errno == EPERM);
-	errno = 0; CHECK(symlink("a.txt", up("s")) == -1 && errno == EPERM);
-	errno = 0; CHECK(rename(up("a.txt"), up("c.txt")) == -1 && errno == EPERM);
-	errno = 0; CHECK(stat(lo("a.txt"), &lst) == 0);
+	/* rename: plain, over an existing target, directory, cross-directory, noreplace */
+	CHECK(!rename(up("a.txt"), up("c.txt")));
+	errno = 0; CHECK(stat(lo("a.txt"), &lst) == -1 && errno == ENOENT);
+	CHECK(!stat(lo("c.txt"), &lst) && lst.st_size == 12000);
+	CHECK(!stat(up("c.txt"), &st) && st.st_ino == lst.st_ino);
+	fd = open(up("victim"), O_WRONLY | O_CREAT, 0600); CHECK(fd >= 0); close(fd);
+	CHECK(!rename(up("c.txt"), up("victim")));
+	CHECK(!stat(lo("victim"), &lst) && lst.st_size == 12000);
+	errno = 0; CHECK(stat(lo("c.txt"), &lst) == -1 && errno == ENOENT);
+	CHECK(!rename(up("victim"), up("a.txt")));
+	CHECK(!mkdir(up("d1"), 0750) && !mkdir(up("d2"), 0750));
+	CHECK(!rename(up("d1"), up("d2/moved")));
+	CHECK(!stat(lo("d2/moved"), &lst) && S_ISDIR(lst.st_mode));
+	errno = 0; CHECK(rename(up("d2"), up("d2/moved/loop")) == -1 && errno == EINVAL);
+	CHECK(!rmdir(up("d2/moved")) && !rmdir(up("d2")));
+	errno = 0; CHECK(renameat2(AT_FDCWD, up("a.txt"), AT_FDCWD, up("a.txt"), RENAME_NOREPLACE) == -1 && errno == EEXIST);
+	CHECK(same_content(up("a.txt"), lo("a.txt")));
+
+	/* xattr: opaque pass-through to the lower file */
+	CHECK(!setxattr(up("a.txt"), "user.moob.kind", "note", 4, 0));
+	CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == 4 && !memcmp(buf, "note", 4));
+	CHECK(getxattr(up("a.txt"), "user.moob.kind", buf, sizeof buf) == 4 && !memcmp(buf, "note", 4));
+	errno = 0; CHECK(setxattr(up("a.txt"), "user.moob.kind", "x", 1, XATTR_CREATE) == -1 && errno == EEXIST);
+	CHECK(!setxattr(up("a.txt"), "user.moob.kind", "decision", 8, XATTR_REPLACE));
+	CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == 8);
+	n = listxattr(up("a.txt"), buf, sizeof buf); CHECK(n > 0 && memmem(buf, (size_t)n, "user.moob.kind", 15));
+	CHECK(!removexattr(up("a.txt"), "user.moob.kind"));
+	errno = 0; CHECK(getxattr(lo("a.txt"), "user.moob.kind", buf, sizeof buf) == -1 && errno == ENODATA);
+	errno = 0; CHECK(getxattr(up("a.txt"), "user.moob.missing", buf, sizeof buf) == -1 && errno == ENODATA);
+
+	/* hard links and symlinks: pass through, or refused with nolinks */
+	if (links) {
+		CHECK(!link(up("a.txt"), up("b.txt")));
+		CHECK(!stat(lo("b.txt"), &lst) && lst.st_nlink == 2);
+		CHECK(!stat(up("a.txt"), &st) && st.st_nlink == 2 && st.st_ino == lst.st_ino);
+		CHECK(!unlink(up("b.txt")));
+		CHECK(!stat(up("a.txt"), &st) && st.st_nlink == 1);
+		CHECK(!symlink("a.txt", up("s")));
+		n = readlink(up("s"), buf, sizeof buf); CHECK(n == 5 && !memcmp(buf, "a.txt", 5));
+		CHECK(!lstat(lo("s"), &lst) && S_ISLNK(lst.st_mode));
+		CHECK(!stat(up("s"), &st) && st.st_size == 12000);
+		CHECK(same_content(up("s"), lo("a.txt")));
+		CHECK(!unlink(up("s")));
+	} else {
+		errno = 0; CHECK(link(up("a.txt"), up("b.txt")) == -1 && errno == EPERM);
+		errno = 0; CHECK(symlink("a.txt", up("s")) == -1 && errno == EPERM);
+		errno = 0; CHECK(stat(lo("b.txt"), &lst) == -1 && errno == ENOENT);
+	}
+
+	/* reflink and dedupe are delegated to the lower filesystem */
+	{
+		int src = open(up("a.txt"), O_RDONLY), dst = open(up("clone"), O_RDWR | O_CREAT | O_TRUNC, 0600);
+		CHECK(src >= 0 && dst >= 0);
+		errno = 0;
+		if (reflink) {
+			struct file_dedupe_range *dr = calloc(1, sizeof(*dr) + sizeof(struct file_dedupe_range_info));
+			int twin = open(up("twin"), O_RDWR | O_CREAT | O_TRUNC, 0600);
+			CHECK(dr && twin >= 0);
+			CHECK(!ioctl(dst, FICLONE, src));
+			CHECK(!fstat(dst, &st) && st.st_size == 12000);
+			CHECK(same_content(up("clone"), lo("a.txt")));
+			CHECK(shared_extent(up("clone")) == 1 && shared_extent(lo("clone")) == 1);
+			CHECK(pwrite(dst, "COW", 3, 5000) == 3);
+			CHECK(pread(src, buf, 7, 5000) == 7 && !memcmp(buf, "MMAPPED", 7));
+			/* twin is a byte copy written the slow way, then deduplicated against a.txt */
+			for (i = 0; i < 12000; i += (int)sizeof buf) {
+				n = pread(src, buf, sizeof buf, i); CHECK(n > 0);
+				CHECK(pwrite(twin, buf, (size_t)n, i) == n);
+			}
+			CHECK(!fsync(twin) && !fsync(src));
+			CHECK(shared_extent(up("twin")) == 0);
+			dr->src_offset = 0; dr->src_length = 8192; dr->dest_count = 1;
+			dr->info[0].dest_fd = twin; dr->info[0].dest_offset = 0;
+			CHECK(!ioctl(src, FIDEDUPERANGE, dr));
+			CHECK(dr->info[0].status == FILE_DEDUPE_RANGE_SAME && dr->info[0].bytes_deduped == 8192);
+			CHECK(shared_extent(up("twin")) == 1);
+			close(twin); free(dr);
+			CHECK(!unlink(up("twin")));
+		} else {
+			CHECK(ioctl(dst, FICLONE, src) == -1 && (errno == EOPNOTSUPP || errno == EXDEV || errno == EINVAL));
+		}
+		close(src); close(dst);
+		CHECK(!unlink(up("clone")));
+	}
 
 	/* unlink removes from lower; open descriptor keeps reading */
 	fd = open(up("a.txt"), O_RDONLY); CHECK(fd >= 0);

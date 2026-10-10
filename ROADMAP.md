@@ -7,7 +7,7 @@ This is a sequence of research milestones, not a delivery schedule.
 | M0 — Project memory | Implemented | Versioned journal, ADRs, shared AI instructions and Git history |
 | M1 — Native shared reads | Validated in local VM | Create image; mount; distinct inodes share physical bytes; malformed-image and read-only tests |
 | M1 hardening | Frozen as a completed experiment ([ADR-0007](docs/decisions/0007-stacked-memory-layer.md)); kept as regression | KASAN/lockdep VM, fuzzing, parser review, lifecycle/concurrency tests and kernel compatibility policy |
-| M2 — Stacked memory layer | Phase 2a validated in local VM; rest proposed | [Spec](docs/spec-m2.md): native stacked filesystem over btrfs/XFS/ext4 ([ADR-0007](docs/decisions/0007-stacked-memory-layer.md)); typed xattr attributes, in-memory index and `QUERY`, reflink delegated to the lower filesystem; xfstests, fsx, dm-log-writes and a real client (git + SQLite + ai-memory) as exit criteria |
+| M2 — Stacked memory layer | Phases 2a–2b validated in local VM; 2c–2e proposed | [Spec](docs/spec-m2.md): native stacked filesystem over btrfs/XFS/ext4 ([ADR-0007](docs/decisions/0007-stacked-memory-layer.md)); typed xattr attributes, in-memory index and `QUERY`, reflink delegated to the lower filesystem; xfstests, fsx, dm-log-writes and a real client (git + SQLite + ai-memory) as exit criteria |
 | M3 — Revisions and snapshots | Proposed | Stable identities, retained revisions, garbage-collection rules and isolation tests |
 | M4 — Agent experiment | Proposed | Integrate a memory workflow and measure utility, space, latency and operational cost against explicit baselines |
 

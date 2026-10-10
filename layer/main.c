@@ -27,6 +27,8 @@
 #include <linux/uio.h>
 #include <linux/splice.h>
 #include <linux/seq_file.h>
+#include <linux/xattr.h>
+#include <linux/fiemap.h>
 
 #define MOOBL_SUPER_MAGIC 0x4d4f4f42	/* "MOOB" */
 #define MOOBL_NAME "moobfs_layer"
@@ -34,6 +36,7 @@
 struct moobl_sb {
 	struct path lower;		/* lower root */
 	const struct cred *creds;	/* mounter credentials for backing I/O */
+	bool nolinks;			/* refuse link and symlink creation */
 };
 
 struct moobl_inode {
@@ -91,6 +94,7 @@ static int moobl_set_lower_path(struct dentry *dentry, struct vfsmount *mnt,
 static const struct inode_operations moobl_dir_iops;
 static const struct inode_operations moobl_file_iops;
 static const struct inode_operations moobl_special_iops;
+static const struct inode_operations moobl_symlink_iops;
 static const struct file_operations moobl_dir_fops;
 static const struct file_operations moobl_file_fops;
 static const struct address_space_operations moobl_aops = {
@@ -118,8 +122,10 @@ static int moobl_inode_set(struct inode *inode, void *data)
 	} else if (S_ISREG(inode->i_mode)) {
 		inode->i_op = &moobl_file_iops;
 		inode->i_fop = &moobl_file_fops;
+	} else if (S_ISLNK(inode->i_mode)) {
+		inode->i_op = &moobl_symlink_iops;
 	} else {
-		/* Symlinks, devices and fifos are not supported in phase 2a. */
+		/* Devices and fifos: attributes only; opening them is refused. */
 		inode->i_op = &moobl_special_iops;
 		init_special_inode(inode, inode->i_mode, lower->i_rdev);
 	}
@@ -183,6 +189,8 @@ static int moobl_show_options(struct seq_file *m, struct dentry *root)
 {
 	seq_puts(m, ",lower=");
 	seq_path(m, &MOOBL_SB(root->d_sb)->lower, " \t\n\\,");
+	if (MOOBL_SB(root->d_sb)->nolinks)
+		seq_puts(m, ",nolinks");
 	return 0;
 }
 
@@ -398,6 +406,172 @@ static int moobl_rmdir(struct inode *dir, struct dentry *dentry)
 	return err;
 }
 
+static int moobl_rename(struct mnt_idmap *idmap, struct inode *old_dir,
+			struct dentry *old_dentry, struct inode *new_dir,
+			struct dentry *new_dentry, unsigned int flags)
+{
+	struct dentry *lower_old_dir = moobl_lower_dentry(old_dentry->d_parent);
+	struct dentry *lower_new_dir = moobl_lower_dentry(new_dentry->d_parent);
+	struct dentry *lower_old = dget(moobl_lower_dentry(old_dentry));
+	struct dentry *lower_new = dget(moobl_lower_dentry(new_dentry));
+	struct inode *target = d_inode(new_dentry);
+	struct dentry *trap;
+	struct renamedata rd = {
+		.old_mnt_idmap = &nop_mnt_idmap,
+		.old_dir = d_inode(lower_old_dir),
+		.old_dentry = lower_old,
+		.new_mnt_idmap = &nop_mnt_idmap,
+		.new_dir = d_inode(lower_new_dir),
+		.new_dentry = lower_new,
+		.flags = flags,
+	};
+	int err;
+
+	trap = lock_rename(lower_old_dir, lower_new_dir);
+	if (IS_ERR(trap)) {
+		err = PTR_ERR(trap);
+		goto out_put;
+	}
+	err = -EINVAL;
+	if (lower_old->d_parent != lower_old_dir || lower_new->d_parent != lower_new_dir)
+		goto out_unlock;
+	if (d_unhashed(lower_old) || d_unhashed(lower_new))
+		goto out_unlock;
+	if (trap == lower_old)
+		goto out_unlock;
+	err = -ENOTEMPTY;
+	if (trap == lower_new)
+		goto out_unlock;
+	err = vfs_rename(&rd);
+	if (err)
+		goto out_unlock;
+	if (target)
+		fsstack_copy_attr_all(target, moobl_lower_inode(target));
+	fsstack_copy_attr_all(new_dir, d_inode(lower_new_dir));
+	if (new_dir != old_dir)
+		fsstack_copy_attr_all(old_dir, d_inode(lower_old_dir));
+	if ((flags & RENAME_EXCHANGE) && target)
+		fsstack_copy_attr_all(d_inode(old_dentry),
+				      moobl_lower_inode(d_inode(old_dentry)));
+out_unlock:
+	unlock_rename(lower_old_dir, lower_new_dir);
+out_put:
+	dput(lower_new);
+	dput(lower_old);
+	return err;
+}
+
+static int moobl_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry)
+{
+	struct inode *inode = d_inode(old_dentry);
+	struct dentry *lower_old = moobl_lower_dentry(old_dentry);
+	struct dentry *lower_dentry;
+	struct inode *lower_dir;
+	int err;
+
+	if (MOOBL_SB(dir->i_sb)->nolinks)
+		return -EPERM;
+	err = moobl_lock_parent(new_dentry, &lower_dentry, &lower_dir);
+	if (err)
+		return err;
+	err = vfs_link(lower_old, &nop_mnt_idmap, lower_dir, lower_dentry, NULL);
+	if (!err)
+		err = moobl_instantiate(dir, new_dentry, lower_dentry, lower_dir);
+	if (!err)
+		set_nlink(inode, moobl_lower_inode(inode)->i_nlink);
+	moobl_unlock_parent(lower_dentry, lower_dir);
+	return err;
+}
+
+static int moobl_symlink(struct mnt_idmap *idmap, struct inode *dir,
+			 struct dentry *dentry, const char *symname)
+{
+	struct dentry *lower_dentry;
+	struct inode *lower_dir;
+	int err;
+
+	if (MOOBL_SB(dir->i_sb)->nolinks)
+		return -EPERM;
+	err = moobl_lock_parent(dentry, &lower_dentry, &lower_dir);
+	if (err)
+		return err;
+	err = vfs_symlink(&nop_mnt_idmap, lower_dir, lower_dentry, symname);
+	if (!err)
+		err = moobl_instantiate(dir, dentry, lower_dentry, lower_dir);
+	moobl_unlock_parent(lower_dentry, lower_dir);
+	return err;
+}
+
+static const char *moobl_get_link(struct dentry *dentry, struct inode *inode,
+				  struct delayed_call *done)
+{
+	if (!dentry)
+		return ERR_PTR(-ECHILD);
+	fsstack_copy_attr_atime(inode, moobl_lower_inode(inode));
+	return vfs_get_link(moobl_lower_dentry(dentry), done);
+}
+
+static int moobl_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
+			u64 start, u64 len)
+{
+	struct inode *lower = moobl_lower_inode(inode);
+	const struct cred *old;
+	int err;
+
+	if (!lower->i_op->fiemap)
+		return -EOPNOTSUPP;
+	old = override_creds(MOOBL_SB(inode->i_sb)->creds);
+	err = lower->i_op->fiemap(lower, fieinfo, start, len);
+	revert_creds(old);
+	return err;
+}
+
+/* ---- extended attributes: opaque pass-through (typed validation is phase 2c) */
+
+static ssize_t moobl_listxattr(struct dentry *dentry, char *list, size_t size)
+{
+	ssize_t ret = vfs_listxattr(moobl_lower_dentry(dentry), list, size);
+
+	if (ret >= 0)
+		fsstack_copy_attr_atime(d_inode(dentry), moobl_lower_inode(d_inode(dentry)));
+	return ret;
+}
+
+static int moobl_xattr_get(const struct xattr_handler *handler, struct dentry *dentry,
+			   struct inode *inode, const char *name, void *value, size_t size)
+{
+	return vfs_getxattr(&nop_mnt_idmap, moobl_lower_dentry(dentry),
+			    xattr_full_name(handler, name), value, size);
+}
+
+static int moobl_xattr_set(const struct xattr_handler *handler, struct mnt_idmap *idmap,
+			   struct dentry *dentry, struct inode *inode, const char *name,
+			   const void *value, size_t size, int flags)
+{
+	struct dentry *lower = moobl_lower_dentry(dentry);
+	const char *full = xattr_full_name(handler, name);
+	int err;
+
+	if (value)
+		err = vfs_setxattr(&nop_mnt_idmap, lower, full, value, size, flags);
+	else
+		err = vfs_removexattr(&nop_mnt_idmap, lower, full);
+	if (!err)
+		fsstack_copy_attr_all(inode, d_inode(lower));
+	return err;
+}
+
+static const struct xattr_handler moobl_xattr_handler = {
+	.prefix = "",	/* every namespace; permission checks happen in the VFS and below */
+	.get = moobl_xattr_get,
+	.set = moobl_xattr_set,
+};
+
+static const struct xattr_handler * const moobl_xattr_handlers[] = {
+	&moobl_xattr_handler,
+	NULL
+};
+
 /* ---- attribute operations shared by files and directories -------------- */
 
 static int moobl_getattr(struct mnt_idmap *idmap, const struct path *path,
@@ -454,21 +628,36 @@ static const struct inode_operations moobl_dir_iops = {
 	.mkdir = moobl_mkdir,
 	.unlink = moobl_unlink,
 	.rmdir = moobl_rmdir,
+	.rename = moobl_rename,
+	.link = moobl_link,
+	.symlink = moobl_symlink,
 	.getattr = moobl_getattr,
 	.setattr = moobl_setattr,
 	.permission = moobl_permission,
+	.listxattr = moobl_listxattr,
 };
 
 static const struct inode_operations moobl_file_iops = {
 	.getattr = moobl_getattr,
 	.setattr = moobl_setattr,
 	.permission = moobl_permission,
+	.listxattr = moobl_listxattr,
+	.fiemap = moobl_fiemap,
+};
+
+static const struct inode_operations moobl_symlink_iops = {
+	.get_link = moobl_get_link,
+	.getattr = moobl_getattr,
+	.setattr = moobl_setattr,
+	.permission = moobl_permission,
+	.listxattr = moobl_listxattr,
 };
 
 static const struct inode_operations moobl_special_iops = {
 	.getattr = moobl_getattr,
 	.setattr = moobl_setattr,
 	.permission = moobl_permission,
+	.listxattr = moobl_listxattr,
 };
 
 /* ---- regular file operations ------------------------------------------ */
@@ -628,6 +817,43 @@ static long moobl_fallocate(struct file *file, int mode, loff_t offset, loff_t l
 	return ret;
 }
 
+static loff_t moobl_remap_file_range(struct file *in, loff_t pos_in, struct file *out,
+				     loff_t pos_out, loff_t len, unsigned int flags)
+{
+	struct inode *inode_out = file_inode(out);
+	const struct cred *old;
+	loff_t ret;
+
+	if (file_inode(in)->i_sb != inode_out->i_sb)
+		return -EXDEV;
+	old = override_creds(MOOBL_SB(inode_out->i_sb)->creds);
+	if (flags & REMAP_FILE_DEDUP)
+		ret = vfs_dedupe_file_range_one(in->private_data, pos_in, out->private_data,
+						pos_out, len, flags);
+	else
+		ret = vfs_clone_file_range(in->private_data, pos_in, out->private_data,
+					   pos_out, len, flags);
+	revert_creds(old);
+	moobl_file_modified(out);
+	return ret;
+}
+
+static ssize_t moobl_copy_file_range(struct file *in, loff_t pos_in, struct file *out,
+				     loff_t pos_out, size_t len, unsigned int flags)
+{
+	const struct cred *old;
+	ssize_t ret;
+
+	if (file_inode(in)->i_sb != file_inode(out)->i_sb)
+		return -EXDEV;
+	old = override_creds(MOOBL_SB(file_inode(out)->i_sb)->creds);
+	ret = vfs_copy_file_range(in->private_data, pos_in, out->private_data, pos_out,
+				  len, flags);
+	revert_creds(old);
+	moobl_file_modified(out);
+	return ret;
+}
+
 static int moobl_flush(struct file *file, fl_owner_t id)
 {
 	struct file *real = file->private_data;
@@ -649,6 +875,8 @@ static const struct file_operations moobl_file_fops = {
 	.fsync = moobl_fsync,
 	.fallocate = moobl_fallocate,
 	.flush = moobl_flush,
+	.remap_file_range = moobl_remap_file_range,
+	.copy_file_range = moobl_copy_file_range,
 };
 
 /* ---- directory file operations ---------------------------------------- */
@@ -703,12 +931,14 @@ static const struct file_operations moobl_dir_fops = {
 
 struct moobl_fc {
 	char *lower;
+	bool nolinks;
 };
 
-enum { Opt_lower };
+enum { Opt_lower, Opt_nolinks };
 
 static const struct fs_parameter_spec moobl_params[] = {
 	fsparam_string("lower", Opt_lower),
+	fsparam_flag("nolinks", Opt_nolinks),
 	{}
 };
 
@@ -720,10 +950,15 @@ static int moobl_parse_param(struct fs_context *fc, struct fs_parameter *param)
 
 	if (opt < 0)
 		return opt;
-	if (opt == Opt_lower) {
+	switch (opt) {
+	case Opt_lower:
 		kfree(ctx->lower);
 		ctx->lower = param->string;
 		param->string = NULL;
+		break;
+	case Opt_nolinks:
+		ctx->nolinks = true;
+		break;
 	}
 	return 0;
 }
@@ -753,6 +988,8 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	sbi->creds = prepare_creds();
 	if (!sbi->creds)
 		return -ENOMEM;
+	sbi->nolinks = ctx->nolinks;
+	sb->s_xattr = moobl_xattr_handlers;
 	sb->s_magic = MOOBL_SUPER_MAGIC;
 	sb->s_op = &moobl_sops;
 	sb->s_d_op = &moobl_dops;

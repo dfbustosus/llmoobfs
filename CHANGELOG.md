@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- Phase 2b: rename, links, symlinks (`nolinks` option), opaque xattr pass-through, delegated
+  reflink/dedupe/copy_file_range and FIEMAP; validated over ext4, btrfs and XFS in the VM.
 - Phase 2a of the memory layer: `layer/moobfs_layer.ko`, a native stacked pass-through
   filesystem over a lower directory, validated in the QEMU VM over ext4 with the pass-through
   acceptance test and 23,000 `fsx` operations (vendored from xfstests).

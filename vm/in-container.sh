@@ -18,7 +18,8 @@ cp vm/init "$STAGE/init"
 chmod +x "$STAGE/init"
 cp kernel/moobfs.ko "$STAGE/moobfs.ko"
 cp layer/moobfs_layer.ko "$STAGE/moobfs_layer.ko"
-# Lower filesystem for the layer: ext4 as an in-tree module plus its dependencies.
+# Lower filesystems for the layer: ext4, btrfs and XFS as in-tree modules with their
+# dependency chains, plus virtio_blk for the disks that carry the lower images.
 mkdir -p "$STAGE/mods"
 python3 - "$KERNEL" "$STAGE/mods" <<'PY'
 import lzma, sys
@@ -34,19 +35,26 @@ def visit(m):
         visit(d)
     if m not in order:
         order.append(m)
-# ext4 requests the crc32c shash through the crypto API; modules.dep does not record that.
-for m in ('kernel/crypto/crc32c_generic.ko.xz', 'kernel/fs/ext4/ext4.ko.xz'):
+# Filesystems request the crc32c shash through the crypto API; modules.dep does not record that.
+for m in ('kernel/crypto/crc32c_generic.ko.xz', 'kernel/drivers/block/virtio_blk.ko.xz',
+          'kernel/fs/ext4/ext4.ko.xz', 'kernel/fs/btrfs/btrfs.ko.xz', 'kernel/fs/xfs/xfs.ko.xz'):
     visit(m)
 out = Path(sys.argv[2])
 with open(out / 'order', 'w') as f:
-    for i, m in enumerate(order):
+    for m in order:
         name = Path(m).name.replace('.ko.xz', '.ko')
         (out / name).write_bytes(lzma.decompress((base / m).read_bytes()))
         f.write(name + '\n')
-print('ext4 module chain:', ' '.join(Path(m).name for m in order))
+print('lower module chain:', ' '.join(Path(m).name for m in order))
 PY
-truncate -s 64M "$STAGE/data/lower.img"
-mke2fs -q -F -t ext4 -L moob-lower "$STAGE/data/lower.img"
+# Lower images are sparse disks attached through virtio, not initramfs files.
+rm -f build/vm/lower-ext4.img build/vm/lower-btrfs.img build/vm/lower-xfs.img
+truncate -s 64M build/vm/lower-ext4.img
+mke2fs -q -F -t ext4 -L moob-lower build/vm/lower-ext4.img
+truncate -s 256M build/vm/lower-btrfs.img
+mkfs.btrfs -q -f -L moob-lower build/vm/lower-btrfs.img
+truncate -s 300M build/vm/lower-xfs.img
+mkfs.xfs -q -f -L moob-lower build/vm/lower-xfs.img
 python3 - "$KERNEL" "$STAGE/loop.ko" <<'PY'
 import lzma
 from pathlib import Path
@@ -73,7 +81,10 @@ cp "/boot/config-$KERNEL" build/vm/kernel.config
 (cd "$STAGE" && find . -print0 | sort -z | cpio --null -o --format=newc 2>/dev/null | gzip -n) > build/vm/initramfs.cpio.gz
 set +e
 timeout 600 qemu-system-x86_64 \
-    -machine q35 -accel tcg -cpu max -m 384M -smp 2 \
+    -machine q35 -accel tcg -cpu max -m 512M -smp 2 \
+    -drive file=build/vm/lower-ext4.img,format=raw,if=virtio \
+    -drive file=build/vm/lower-btrfs.img,format=raw,if=virtio \
+    -drive file=build/vm/lower-xfs.img,format=raw,if=virtio \
     -kernel "/boot/vmlinuz-$KERNEL" -initrd build/vm/initramfs.cpio.gz \
     -append 'console=ttyS0 rdinit=/init panic=-1 loglevel=4' \
     -nographic -no-reboot -nic none > build/vm/console.log 2>&1

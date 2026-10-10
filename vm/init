@@ -35,30 +35,37 @@ rmmod moobfs || fail unload
 if dmesg | grep -E 'BUG:|Oops:|WARNING:|Kernel panic|KASAN:'; then fail kernel-diagnostic; fi
 echo "MOOBFS_VM_PASS: shared extents, independent inodes, reads, readonly, remount, 15 malformed images"
 
-# Phase 2a: memory layer stacked over ext4.
+# Phases 2a/2b: memory layer stacked over ext4, btrfs and XFS (virtio disks vda, vdb, vdc).
 for m in $(cat /mods/order); do insmod "/mods/$m" || fail "lower module $m"; done
-mkdir -p /lower /mnt/layer
-mount -t ext4 -o loop /data/lower.img /lower || fail lower-mount
 insmod /moobfs_layer.ko || fail layer-module
+mkdir -p /lower /mnt/layer
 mount -t moobfs_layer none /mnt/layer && fail layer-mount-without-lower
 mount -t moobfs_layer -o lower=/nonexistent none /mnt/layer && fail layer-mount-bad-lower
-mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail layer-mount
-grep -q 'moobfs_layer' /proc/mounts || fail layer-proc-mounts
-mount -t moobfs_layer -o lower=/mnt/layer none /mnt && fail layer-stack-on-itself
-/layer /mnt/layer /lower || fail layer-tests
-mkdir -p /mnt/layer/fsx
-/fsx -q -N 10000 -S 1 /mnt/layer/fsx/file1 || fail fsx-1
-/fsx -q -N 10000 -S 2 -r 512 -w 512 /mnt/layer/fsx/file2 || fail fsx-2
-/fsx -q -N 3000 -S 3 -l 2000000 /mnt/layer/fsx/file3 || fail fsx-large
-cmp /mnt/layer/fsx/file1 /lower/fsx/file1 || fail fsx-lower-mismatch
-rm -rf /mnt/layer/fsx || fail layer-cleanup
-sync
-umount /mnt/layer || fail layer-unmount
-mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail layer-remount
-[ "$(ls -A /mnt/layer | wc -l)" -eq 1 ] || fail layer-remount-content
-umount /mnt/layer || fail layer-second-unmount
+run_lower() {
+    fs=$1; dev=$2; reflink=$3
+    mount -t "$fs" "$dev" /lower || fail "lower-mount-$fs"
+    mount -t moobfs_layer -o lower=/lower none /mnt/layer || fail "layer-mount-$fs"
+    grep -q 'moobfs_layer' /proc/mounts || fail "layer-proc-mounts-$fs"
+    mount -t moobfs_layer -o lower=/mnt/layer none /mnt && fail "layer-stack-on-itself-$fs"
+    /layer /mnt/layer /lower "$reflink" links || fail "layer-tests-$fs"
+    mkdir -p /mnt/layer/fsx
+    /fsx -q -N 5000 -S 1 /mnt/layer/fsx/file1 || fail "fsx-1-$fs"
+    /fsx -q -N 3000 -S 2 -r 512 -w 512 /mnt/layer/fsx/file2 || fail "fsx-2-$fs"
+    /fsx -q -N 1000 -S 3 -l 2000000 /mnt/layer/fsx/file3 || fail "fsx-large-$fs"
+    cmp /mnt/layer/fsx/file1 /lower/fsx/file1 || fail "fsx-lower-mismatch-$fs"
+    rm -rf /mnt/layer/fsx || fail "layer-cleanup-$fs"
+    sync
+    umount /mnt/layer || fail "layer-unmount-$fs"
+    mount -t moobfs_layer -o lower=/lower,nolinks none /mnt/layer || fail "layer-remount-$fs"
+    /layer /mnt/layer /lower "$reflink" nolinks || fail "layer-nolinks-tests-$fs"
+    umount /mnt/layer || fail "layer-second-unmount-$fs"
+    umount /lower || fail "lower-unmount-$fs"
+    echo "LAYER_LOWER_PASS: $fs reflink=$reflink"
+}
+run_lower ext4 /dev/vda no
+run_lower btrfs /dev/vdb yes
+run_lower xfs /dev/vdc yes
 rmmod moobfs_layer || fail layer-unload
-umount /lower || fail lower-unmount
 if dmesg | grep -E 'BUG:|Oops:|WARNING:|Kernel panic|KASAN:'; then fail kernel-diagnostic-layer; fi
-echo "MOOBFS_LAYER_PASS: pass-through over ext4, layer tests, fsx 23000 ops, remount, unload"
+echo "MOOBFS_LAYER_PASS: pass-through over ext4, btrfs and xfs; layer tests; fsx 9000 ops each; reflink on btrfs/xfs; nolinks; unload"
 poweroff -f

@@ -160,7 +160,7 @@ importáveis pela ferramenta da seção 7.
 | Fase | Entrega | Saída |
 | --- | --- | --- |
 | 2a | Passagem mínima (wrapfs): lookup, readdir, create, read/write via `backing_file_*`, mmap, fsync, sobre ext4 | **Validada em 2026-10-10** ([registro 0011](history/0011-phase-2a-stacked-passthrough.md)): `fsx` passa e teste de passagem passa na VM; xfstests `generic` e KASAN ficam para 2b |
-| 2b | Passagem completa (rename, unlink, truncate, locks, splice, xattr opacos); btrfs e XFS como inferiores; reflink delegado | xfstests `generic` com exclusões versionadas; `cp --reflink` funciona |
+| 2b | Passagem completa (rename, unlink, truncate, locks, splice, xattr opacos); btrfs e XFS como inferiores; reflink delegado | **Validada em 2026-10-10** ([registro 0012](history/0012-phase-2b-full-passthrough.md)): `FICLONE`/`FIDEDUPERANGE` funcionam sobre btrfs e XFS; xfstests completo e KASAN/lockdep ainda pendentes |
 | 2c | Codificação tipada, validação, `moobfs-check`, `moobfs-attr`, fuzzing | Entradas inválidas rejeitadas; `make test` com fuzzing |
 | 2d | Índice em RAM, `QUERY`, `GET_INFO`, `moobfs-index` como oráculo | Consultas idênticas kernel/usuário; orçamento de memória respeitado |
 | 2e | Aceitação com git + SQLite + ai-memory; dm-log-writes; dm-flakey | Registro em `docs/history/` com comandos e números |

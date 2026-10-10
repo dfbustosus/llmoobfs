@@ -22,9 +22,10 @@ MoobFS does not currently provide them or extend a model's context window.
 ## Implemented today: M1 (read-only sharing) and phase 2a of the memory layer
 
 Since [ADR-0007](docs/decisions/0007-stacked-memory-layer.md) MoobFS is being built as a
-**native stacked layer over a mature filesystem**. Phase 2a is a minimal pass-through module
-(`layer/moobfs_layer.ko`, `mount -t moobfs_layer -o lower=<dir>`) validated in the test VM over
-ext4 with `fsx`; it adds no memory features yet. The M1 experiment below remains as the
+**native stacked layer over a mature filesystem**. Phases 2a and 2b deliver a complete pass-through module
+(`layer/moobfs_layer.ko`, `mount -t moobfs_layer -o lower=<dir>[,nolinks]`) validated in the test VM
+over ext4, btrfs and XFS with `fsx`, including delegated reflink and dedupe; it adds no memory
+features yet. The M1 experiment below remains as the
 validated proof of native shared reads and runs as a regression in the same VM.
 
 ### The read-only M1 milestone
@@ -83,8 +84,10 @@ SHARED: inode=2/3 physical=12288 length=16384
 MOUNTED_READ_TESTS_PASS
 WRITABLE_MOUNT_REJECTED
 MOOBFS_VM_PASS: shared extents, independent inodes, reads, readonly, remount, 15 malformed images
-LAYER_PASSTHROUGH_TESTS_PASS
-MOOBFS_LAYER_PASS: pass-through over ext4, layer tests, fsx 23000 ops, remount, unload
+LAYER_LOWER_PASS: ext4 reflink=no
+LAYER_LOWER_PASS: btrfs reflink=yes
+LAYER_LOWER_PASS: xfs reflink=yes
+MOOBFS_LAYER_PASS: pass-through over ext4, btrfs and xfs; layer tests; fsx 9000 ops each; reflink on btrfs/xfs; nolinks; unload
 ```
 
 The fixture contains 12,562 logical bytes referenced by each file, stored once.
@@ -100,7 +103,7 @@ Metadata and alignment overhead still count toward total image size.
 | Verifier | Structural checks, bounds, CRC32C metadata, SHA-256 payload checks |
 | Limits | 128 files/objects, 64 KiB per object, printable ASCII names up to 63 bytes |
 | Validation | 9 tool tests, sanitizers for tools, actual QEMU mounts and 15 malformed images |
-| Memory layer (phase 2a) | Stacked pass-through over ext4: create, read, write, mmap, fsync, directories; no links, rename, xattr or index yet |
+| Memory layer (phases 2a–2b) | Stacked pass-through over ext4, btrfs and XFS: files, directories, rename, links, xattr, mmap, fsync, delegated reflink/dedupe; no typed attributes or index yet |
 
 Images are immutable while mounted. Files have independent inodes and link count
 1; this is not hard linking. The module validates all content at mount, which
