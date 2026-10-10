@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-10
 
+- `docs/research-ai-memory.md`: code-level reading of akitaonrails/ai-memory and its
+  relation to MoobFS; M2 now needs POSIX writes to host a real client.
 - Site: interactive plan page (`site/plan.html`) showing inputs, processing and outputs per milestone.
 - `docs/ecosystem.md`: survey of free software relevant to testing, crash consistency,
   kernel data structures, BFS tooling and agent memory layers.

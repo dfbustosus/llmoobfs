@@ -78,6 +78,7 @@ mantém fora do kernel.
 | [Letta](https://github.com/letta-ai/letta) | Runtime onde o agente é a memória (MemGPT); camadas core/arquivo | Memória arquival pode ser montada como diretório. |
 | [Graphiti](https://github.com/getzep/graphiti) | Grafo de conhecimento temporal (equipe Zep) | Fatos com validade temporal mapeiam bem em revisões + atributo `time`. |
 | [cognee](https://github.com/topoteretes/cognee) | Ingestão de documentos variados em grafo consultável | Idem; cliente. |
+| [ai-memory](https://github.com/akitaonrails/ai-memory) (MIT, Rust) | Wiki markdown em git como fonte de verdade, SQLite derivado, captura por hooks, zero LLM por padrão | Cliente mais próximo do nosso modelo: fonte de verdade em arquivos. Leitura completa em [research-ai-memory.md](research-ai-memory.md). |
 
 Comparações publicadas em 2026 são majoritariamente de fornecedores; nenhuma medição
 independente foi encontrada. O M4 deve definir suas próprias métricas.
