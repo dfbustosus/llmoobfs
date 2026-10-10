@@ -22,7 +22,8 @@ Achado do portão de plano (2026-10-10, 300 inodes, perfil 16): o planejador do 
 seletividade é baixa nessa escala. O portão passou a registrar `SCAN` como exceção a justificar
 em cada medição, não como falha; a igualdade de conjuntos continua obrigatória. Q9 sobre um
 atributo presente em todas as linhas será sempre varredura em qualquer sistema; a forma deve
-ser reavaliada ou aplicada a um atributo minoritário antes do M4 medir.
+ser reavaliada ou aplicada a um atributo minoritário antes do M4 medir. Resolvido no mesmo
+dia: `weight` passou a existir em 30% das memórias (acima), então Q9 pergunta por uma minoria.
 Desvio registrado: o perfil mínimo passou a chamar-se 6, não 3, porque o §3 fixa seis atributos
 em todo perfil; perfis válidos são 6, 8 e 16. Nenhum número de desempenho foi produzido.
 
@@ -64,8 +65,9 @@ semente do conteúdo, e os atributos como `nome=tipo:valor`. Regras:
 - Atributos fixos em todo perfil: `namespace` (string, 8 valores), `agent` (string, 32),
   `memory_id` (string UUID v7 textual, único), `kind` (string, 6 valores, Zipf), `score`
   (int64 uniforme 0..1000), `created` (time crescente com jitter). Perfis 8 e 16 acrescentam
-  `pinned` (bool, 10% verdadeiro), `weight` (double normal), `tag1..tagN` (string, 50 valores,
-  Zipf) e `raw` (raw de 256 bytes, só no perfil 16, nunca indexado).
+  `pinned` (bool, 10% verdadeiro), `weight` (double normal, presente em 30% das memórias, para
+  que a consulta de existência Q9 seja seletiva; decisão de 2026-10-10), `tag1..tagN` (string,
+  50 valores, Zipf) e `raw` (raw de 256 bytes, só no perfil 16, nunca indexado).
 - Tamanhos de conteúdo log-normais com mediana 2 KiB e cauda até 64 KiB; conteúdo
   pseudoaleatório a partir da semente da linha, com 15% das memórias duplicadas byte a byte
   de outra, para W-compartilhar.

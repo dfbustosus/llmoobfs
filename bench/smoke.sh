@@ -19,10 +19,10 @@ cmp -s "$OUT/m1.txt" "$OUT/m3.txt" && fail "gen ignores the seed"
 [ "$(grep -vc '^#' "$OUT/m1.txt")" -eq 300 ] || fail "manifest line count"
 # every memory_id unique; 16 attributes per line in profile 16
 [ "$(grep -v '^#' "$OUT/m1.txt" | grep -o 'memory_id=s:[^ ]*' | sort -u | wc -l)" -eq 300 ] || fail "memory_id not unique"
-grep -v '^#' "$OUT/m1.txt" | awk -F'\t' '{ n = split($5, a, " "); if (n != 16) { print "line " NR " has " n " attrs"; exit 1 } }' || fail "attribute count"
+grep -v '^#' "$OUT/m1.txt" | awk -F'\t' '{ n = split($5, a, " "); if (n != 16 && n != 15) { print "line " NR " has " n " attrs"; exit 1 } }' || fail "attribute count"
 for p in 6 8; do
     "$BUILD/bench-gen" --seed 1 --inodes 50 --profile $p --out "$OUT/p$p.txt"
-    grep -v '^#' "$OUT/p$p.txt" | awk -F'\t' -v want=$p '{ n = split($5, a, " "); if (n != want) exit 1 }' || fail "profile $p attribute count"
+    grep -v '^#' "$OUT/p$p.txt" | awk -F'\t' -v want=$p '{ n = split($5, a, " "); if (n != want && n != want - (want > 6)) exit 1 }' || fail "profile $p attribute count"
 done
 
 for rep in rep1 rep2; do
@@ -31,7 +31,19 @@ for rep in rep1 rep2; do
     [ "$(find "$TARGET" -type f -name '*.md' | wc -l)" -eq 300 ] || fail "W1 created the wrong number of files"
     find "$TARGET" -name '*.tmp' | grep -q . && fail "W1 left temporary files"
     "$BUILD/moobfs-check" "$TARGET" > "$OUT/$rep/check.json" || { cat "$OUT/$rep/check.json"; fail "moobfs-check rejected the W1 tree"; }
-    grep -q '"typed_attributes": 4800' "$OUT/$rep/check.json" || fail "moobfs-check attribute count"
+    attrs=$(grep -v '^#' "$OUT/m1.txt" | awk -F'\t' '{ n += split($5, a, " ") } END { print n }')
+    grep -q "\"typed_attributes\": $attrs" "$OUT/$rep/check.json" || fail "moobfs-check attribute count"
+    # SQLite baseline right after W1 (W4 changes score later, so loading from the manifest afterwards would not match the files)
+    rm -f "$OUT/$rep/base.db"*
+    sh bench/sqlbase.sh init "$OUT/$rep/base.db"
+    sh bench/sqlbase.sh load "$OUT/$rep/base.db" "$OUT/m1.txt" "$TARGET"
+    [ "$(sqlite3 "$OUT/$rep/base.db" 'select count(*) from memories')" = 300 ] || fail "sqlbase row count"
+    BIN=$BUILD sh bench/equiv.sh bench/queries-w3.txt "$OUT/$rep/base.db" "$TARGET" | tee "$OUT/$rep/equiv.txt" | tail -1 | grep -q '^EQUIV_PASS: 9 shapes' || fail "equivalence SQLite vs oracle"
+    # the SQLite W3 client: one record per statement, row counts equal to the oracle's line counts
+    grep -v '^#' bench/queries-w3.txt | while read -r q; do sh bench/sqlbase.sh sql $q; done > "$OUT/$rep/queries.sql"
+    mkdir -p "$OUT/$rep/sqlite"
+    "$BUILD/bench-sqlclient" --db "$OUT/$rep/base.db" --sql "$OUT/$rep/queries.sql" --out "$OUT/$rep/sqlite/w3" --repeat 2
+    [ "$(wc -c < "$OUT/$rep/sqlite/w3.0.rec")" -eq $((18 * 32)) ] || fail "sqlclient record count"
     "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$TARGET" --workload W2 --procs 2 --out "$OUT/$rep/plain/w2"
     "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$TARGET" --workload W4 --procs 1 --out "$OUT/$rep/plain/w4"
     # 300 creates, 300 reads, 300 + 300 attribute ops: 32 bytes each
@@ -41,17 +53,6 @@ for rep in rep1 rep2; do
     "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$TARGET" --workload W8 --procs 10 --out "$OUT/$rep/w8/mixed"
     [ "$(cat "$OUT/$rep"/w8/*.rec | wc -c)" -ge $((300 * 32)) ] || fail "W8 record count"
 done
-# SQLite baseline: schema, load, plan gate and equivalence with the oracle on the W1 tree
-rm -f "$OUT/base.db"*
-sh bench/sqlbase.sh init "$OUT/base.db"
-sh bench/sqlbase.sh load "$OUT/base.db" "$OUT/m1.txt" "$TARGET"
-[ "$(sqlite3 "$OUT/base.db" 'select count(*) from memories')" = 300 ] || fail "sqlbase row count"
-BIN=$BUILD sh bench/equiv.sh bench/queries-w3.txt "$OUT/base.db" "$TARGET" | tee "$OUT/equiv.txt" | tail -1 | grep -q '^EQUIV_PASS: 9 shapes' || fail "equivalence SQLite vs oracle"
-# the SQLite W3 client: one record per statement, row counts equal to the oracle's line counts
-grep -v '^#' bench/queries-w3.txt | while read -r q; do sh bench/sqlbase.sh sql $q; done > "$OUT/queries.sql"
-mkdir -p "$OUT/rep1/sqlite"
-"$BUILD/bench-sqlclient" --db "$OUT/base.db" --sql "$OUT/queries.sql" --out "$OUT/rep1/sqlite/w3" --repeat 2
-[ "$(wc -c < "$OUT/rep1/sqlite/w3.0.rec")" -eq $((18 * 32)) ] || fail "sqlclient record count"
 # an error must be recorded, not hidden: W2 against a missing tree
 mkdir -p "$OUT/err/plain"
 "$BUILD/bench-load" --manifest "$OUT/m1.txt" --target "$OUT/missing" --workload W2 --out "$OUT/err/plain/w2" || true

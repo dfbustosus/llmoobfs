@@ -225,7 +225,8 @@ run_lower() {
     $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W1 --procs 2 --out /tmp/bench-w1 || fail "bench-w1-$fs"
     [ "$(find $LAYER/bench -type f -name '*.md' | wc -l)" -eq 300 ] || fail "bench-w1-count-$fs"
     $BIN/moobfs-check $LOWER/bench > /tmp/bench-check.json || { cat /tmp/bench-check.json; fail "bench-check-$fs"; }
-    grep -q '"typed_attributes": 4800' /tmp/bench-check.json || fail "bench-check-attrs-$fs"
+    bench_attrs=$(grep -v '^#' /tmp/bench-m.txt | awk -F'\t' '{ n += split($5, a, " ") } END { print n }')
+    grep -q "\"typed_attributes\": $bench_attrs" /tmp/bench-check.json || fail "bench-check-attrs-$fs"
     $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W2 --procs 2 --out /tmp/bench-w2 || fail "bench-w2-$fs"
     grep -v '^#' $BIN/bench-queries-w3.txt > /tmp/bench-q.txt || fail "bench-queries-$fs"
     nq=0

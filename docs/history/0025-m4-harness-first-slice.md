@@ -123,6 +123,22 @@ Evidência: `make bench-smoke` em contêiner (18 registros do cliente em duas re
 `BENCH_LAYER_PASS` em ext4, btrfs e XFS, `MOOBFS_LAYER_PASS`. Com isto o harness cobre tudo o
 que `docs/benchmark-harness.md` pede; o que falta é hardware acelerado para medir.
 
+## Q9 reavaliada e roteiro de convidado acelerado (2026-10-10)
+
+- Q9 (`weight exists`): `bench/gen` passou a emitir `weight` em 30% das memórias (perfis 8 e
+  16), tornando a consulta de existência seletiva; checagens de contagem de atributos no smoke
+  e na suíte passaram a derivar o total do manifesto. Com 300 linhas o planejador do SQLite
+  ainda escolhe `SCAN` para Q9 (85 de 300 linhas), registrado como exceção.
+- Defeito do próprio harness achado e corrigido: o smoke carregava o baseline SQLite depois de
+  W4 ter somado 1 a cada `score` nos arquivos, de modo que um arquivo no limite de Q7 entrava
+  no oráculo e não no SQLite. O baseline passou a ser carregado logo após W1 em todas as
+  execuções (o `run.sh` já fazia isso). A igualdade de conjuntos pegou o erro: é a função dela.
+- `docs/bench-accelerated-guest.md`: roteiro para medir com aceleração de hardware, nos dois
+  caminhos (host Linux x86 com KVM para o relatório; Mac Apple Silicon com Hypervisor.framework
+  e Debian arm64 como campanha preliminar, fora da matriz testada), com validação da suíte
+  antes de medir, calibração de disco com `fio`, invocação do `run.sh` e o que registrar.
+  Proposta não executada.
+
 ## Limitações
 
 O bind mount do Docker Desktop no macOS não suporta xattr de usuário; o smoke deve usar alvo no

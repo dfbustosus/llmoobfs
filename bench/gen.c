@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 	fprintf(f, "# sizes: log-normal, median 2048 bytes, clamped to [64, 65536]; 15%% byte-duplicates of an earlier memory\n");
 	fprintf(f, "# kind: Zipf over 6 values; score: uniform int64 0..1000; created: increasing time with jitter\n");
 	if (profile >= 8)
-		fprintf(f, "# pinned: bool, 10%% true; weight: double, normal(0,1)\n");
+		fprintf(f, "# pinned: bool, 10%% true; weight: double, normal(0,1), present on 30%% of the memories\n");
 	if (profile == 16)
 		fprintf(f, "# tag1..tag7: Zipf over 50 values; raw: 256 opaque bytes from the given seed (not indexed)\n");
 	for (i = 0; i < inodes; i++) {
@@ -118,8 +118,16 @@ int main(int argc, char **argv)
 		if (dup >= 0) fprintf(f, "%" PRId64, dup); else fputc('-', f);
 		fprintf(f, "\tnamespace=s:ns%u agent=s:a%02u memory_id=s:%s kind=s:%s score=i:%" PRIu64 " created=t:%" PRIu64,
 			ns, ag, id, kinds[k], score, created);
-		if (profile >= 8)
-			fprintf(f, " pinned=b:%d weight=d:%.6f", bench_unit(&s) < 0.10, bench_normal(&s));
+		if (profile >= 8) {
+			int pinned = bench_unit(&s) < 0.10;
+			double w = bench_normal(&s);
+
+			/* weight exists on ~30% of memories so that "weight exists" (Q9) is selective */
+			if (bench_unit(&s) < 0.30)
+				fprintf(f, " pinned=b:%d weight=d:%.6f", pinned, w);
+			else
+				fprintf(f, " pinned=b:%d", pinned);
+		}
 		if (profile == 16) {
 			unsigned t;
 
