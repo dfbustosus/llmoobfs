@@ -145,3 +145,13 @@ Resultado (`make vm-test`, kernel Debian 6.12.111, `build/vm-test-race.log`):
 Nenhum resultado malformado, nenhum erro diferente dos dois previstos, resposta final igual ao
 oráculo nos três, sem avisos de kernel; `MOOBFS_LAYER_PASS` e `MOOBFS_ACCEPTANCE_PASS`. O
 teste é de robustez e de contrato, não de desempenho: a VM roda em emulação (TCG).
+
+## KASAN sobre a branch (2026-10-10, em andamento)
+
+Execução 38076335715: falhou em `acl-set-ext4` por ambiente (workflow sem o pacote `acl`, sem
+`setfacl` no guest virtme-ng e sem o binário `idmap`); corrigido em `.github/workflows/kasan.yml`
+e `vm/kasan-guest.sh`. Execução 38077926732: ACLs passaram; falhou em `contract-idmap-ext4`
+porque o kernel KASAN não habilitava `CONFIG_USER_NS`, logo `unshare(CLONE_NEWUSER)` falhava no
+teste. Correção: `CONFIG_NAMESPACES`, `CONFIG_USER_NS` e `CONFIG_FS_POSIX_ACL` em
+`vm/kasan.config`; nova execução disparada, resultado a registrar. Nenhum diagnóstico de kernel
+apareceu nas duas execuções até o ponto da falha.
