@@ -1,11 +1,107 @@
 # MoobFS
 
-Projeto de um filesystem montável, nativo do Linux, para memória persistente de agentes de LLM.
+**An experimental native Linux filesystem for exploring persistent LLM memory.**
 
-O MVP usa um módulo de kernel, formato próprio em um dispositivo de blocos, conteúdo imutável compartilhado e revisões acessíveis como arquivos. A leitura não depende de um processo em espaço de usuário. Gravações são publicadas por operações transacionais do módulo.
+[Português](README.pt-BR.md) · [Project site](https://studiomoob.github.io/llmoobfs/) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
-**Estado: arquitetura proposta; módulo e ferramentas ainda não implementados.**
+[![CI](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml)
+[![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-blue)](LICENSE)
 
-O [desenho do MVP nativo](docs/native-mvp.md) define arquitetura, formato em disco, interface, persistência, limites, etapas de implementação e critérios de validação.
+MoobFS investigates a simple storage primitive: separate files can reference the
+same immutable bytes. The first milestone implements this in an actual mountable
+Linux kernel module. Applications read ordinary files through the VFS; no FUSE
+process is involved.
 
-O objetivo do experimento é medir três coisas separadamente: correção e durabilidade, custo de armazenamento/acesso e utilidade da memória para o agente. Ganhos de desempenho ou economia de espaço ainda precisam ser demonstrados.
+```text
+alpha.txt  →  inode 2  ─┐
+                       ├─→  object 1  →  one physical payload
+beta.txt   →  inode 3  ─┘
+```
+
+**Status: M1 works in an isolated Linux VM. Experimental, read-only, no stable
+release.** This demonstrates physical content sharing. It does not yet implement
+agent memory retrieval, semantic search, writes, snapshots or transactions, and
+there is no performance claim against FUSE or established filesystems.
+
+## Try the image tools
+
+Requires a C11 compiler, Make and Python 3 on Linux or macOS. Run from the repository root:
+
+```sh
+git clone https://github.com/studiomoob/llmoobfs.git
+cd llmoobfs
+make test
+printf 'A memory shared by two files.\n' > build/memory.txt
+build/host/mkfs.moobfs build/demo.img alpha.txt=build/memory.txt beta.txt=build/memory.txt
+build/host/fsck.moobfs build/demo.img
+```
+
+The JSON report shows two inode numbers referencing the same object and physical
+offset. The creator refuses to overwrite an existing image. `fsck.moobfs` checks
+images; it does not repair them.
+
+## Run the native Linux demonstration
+
+With Docker running, use:
+
+```sh
+make vm-test
+```
+
+This builds Linux tools and the module, then boots a dedicated QEMU x86-64 VM using
+Debian kernel **6.12.111+deb13-amd64**. No privileged container or host module loading
+is required. On Apple Silicon it uses CPU emulation; the first build downloads
+kernel packages and takes longer. See [reproduction instructions](docs/testing.md).
+
+The successful test ends with:
+
+```text
+SHARED: inode=2/3 physical=12288 length=16384
+MOUNTED_READ_TESTS_PASS
+WRITABLE_MOUNT_REJECTED
+MOOBFS_VM_PASS: shared extents, independent inodes, reads, readonly, remount, 15 malformed images
+```
+
+The fixture contains 12,562 logical bytes referenced by each file, stored once.
+FIEMAP reports the same 16,384-byte allocation and the shared flag for both inodes.
+Metadata and alignment overhead still count toward total image size.
+
+## What is implemented
+
+| Component | M1 behavior |
+| --- | --- |
+| Native module | VFS mounting, flat directory, buffered reads via iomap, FIEMAP |
+| Image creator | Deterministic offline creation, exact-byte deduplication, no overwrites |
+| Verifier | Structural checks, bounds, CRC32C metadata, SHA-256 payload checks |
+| Limits | 128 files/objects, 64 KiB per object, printable ASCII names up to 63 bytes |
+| Validation | 9 tool tests, sanitizers for tools, actual QEMU mounts and 15 malformed images |
+
+Images are immutable while mounted. Files have independent inodes and link count
+1; this is not hard linking. The module validates all content at mount, which
+adds a full scan. Disk sharing does not guarantee page-cache sharing.
+
+Kernel APIs are version-specific: the supported **test target** is pinned, not a
+promise of compatibility with every Linux version. Use a disposable VM for module
+development. KASAN/lockdep kernel validation and performance benchmarks are pending.
+
+## Documentation and project memory
+
+- [Implemented disk format](docs/format-m1.md) and [testing guide](docs/testing.md).
+- [Original full MVP proposal](docs/native-mvp.md), in Portuguese; future transactional design.
+- [Architecture decisions](docs/decisions/) and [technical journal](docs/history/).
+- [AI-assisted development rules](docs/ai-workflow.md), shared through `AGENTS.md`, `CLAUDE.md` and Cursor rules.
+- [Changelog](CHANGELOG.md), [governance](GOVERNANCE.md), [conduct](CODE_OF_CONDUCT.md) and [security](SECURITY.md).
+
+Git records exact changes; journals record concise rationale, experiments and
+results. Future work must distinguish proposals from implemented and tested behavior.
+
+## Contribute
+
+Bug reports, format review, kernel review and reproducibility improvements are
+welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md). AI-assisted contributions are welcome
+with human review and accurate test evidence. Do not put private vulnerability
+details in public issues; use the [security contact](SECURITY.md).
+
+## License
+
+The entire project is licensed under **GPL-2.0-only**. See [LICENSE](LICENSE).

@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tools:
+    name: Tools and sanitizers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make test
+      - name: Address and undefined behavior sanitizers
+        run: >-
+          make test CC=clang BUILD=build/asan
+          CFLAGS='-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer'
+          LDFLAGS='-fsanitize=address,undefined'
+      - name: Validate site links
+        run: python3 scripts/check-site.py
+  native:
+    name: Native Linux VM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make vm-test
+      - name: Preserve VM evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-vm-evidence
+          path: |
+            build/vm/console.log
+            build/vm/image-report.json
+            build/vm/environment.txt
+            build/vm/kernel.config
+          if-no-files-found: warn
+          retention-days: 30

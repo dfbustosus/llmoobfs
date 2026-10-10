@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible problem without private data.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, email claudio@studiomoob.com instead of opening a public issue."
+  - type: input
+    id: version
+    attributes:
+      label: Commit and environment
+      description: Commit SHA, OS/architecture, kernel, compiler and Docker/QEMU versions where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands and a minimal synthetic fixture. Do not include real memory contents or secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant logs
+      description: Include the failure and surrounding context, not an environment dump.
