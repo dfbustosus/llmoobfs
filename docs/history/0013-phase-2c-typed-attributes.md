@@ -41,8 +41,9 @@ validação no `setxattr`, ferramentas `moobfs-check` e `moobfs-attr`, fuzzing d
 - VM (`make vm-test`, kernel Debian 6.12.111): `MOOBFS_VM_PASS`, `LAYER_LOWER_PASS` para
   ext4, btrfs e XFS, `MOOBFS_LAYER_PASS: … typed attributes and tools …`; sem `BUG`, `Oops`
   ou `WARNING`. SHA-256 de `moobfs_layer.ko`: ver `build/vm/environment.txt` da execução.
-- Fuzzing: não executado no host (Apple clang não traz libFuzzer); fica a cargo do CI em
-  Linux, cujo resultado é registrado no próprio run.
+- Fuzzing: não executado no host (Apple clang não traz libFuzzer). No CI (run 38066427480,
+  commit `e7f31c7`, ubuntu-24.04 com clang): 21.747.211 execuções em 31 s sob ASan e UBSan,
+  cobertura 113 arestas, corpus final de 138 entradas, nenhuma falha.
 
 ## Tentativas e correções
 
