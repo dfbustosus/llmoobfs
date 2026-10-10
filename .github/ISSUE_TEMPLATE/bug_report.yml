@@ -4,19 +4,59 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: "For vulnerabilities, email claudio@studiomoob.com instead of opening a public issue."
+      value: >-
+        For vulnerabilities (crash or hang triggerable by an unprivileged user,
+        data leak between users, memory corruption) do **not** open an issue:
+        use the private channel described in SECURITY.md. Never paste real agent
+        memories, credentials or personal data here.
   - type: input
-    id: version
+    id: commit
     attributes:
-      label: Commit and environment
-      description: Commit SHA, OS/architecture, kernel, compiler and Docker/QEMU versions where relevant.
+      label: Commit
+      description: Git SHA of the tree you tested (`git rev-parse HEAD`).
     validations:
       required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      description: "`uname -r` inside the VM or host where the module ran. Say if it is the harness kernel (Debian 6.12.111+deb13-amd64 or upstream 6.12.112 under KASAN) or another."
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did it run?
+      options:
+        - make vm-test (Docker + QEMU harness)
+        - KASAN workflow or vng guest (vm/kasan-guest.sh)
+        - My own disposable VM
+        - Host tools only (no module loaded)
+        - Other (describe below)
+    validations:
+      required: true
+  - type: dropdown
+    id: lower
+    attributes:
+      label: Lower filesystem
+      options:
+        - ext4
+        - btrfs
+        - XFS
+        - not applicable (M1 image or host tools)
+        - other (describe below)
+    validations:
+      required: true
+  - type: input
+    id: mount_options
+    attributes:
+      label: Mount options
+      description: "Exact options used, for example `lower=/lower,nolinks` or `lower=/lower,index_budget=1M`."
   - type: textarea
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: Exact commands and a minimal synthetic fixture. Do not include real memory contents or secrets.
+      description: Exact commands, in order, and a minimal synthetic fixture. If it happens in `vm/suite.sh`, name the failing step (`MOOBFS_VM_FAIL:` line).
     validations:
       required: true
   - type: textarea
@@ -26,7 +66,28 @@ body:
     validations:
       required: true
   - type: textarea
+    id: dmesg
+    attributes:
+      label: dmesg excerpt
+      description: The relevant lines (`BUG`, `WARNING`, `KASAN`, `UBSAN`, lockdep, `Oops`) with a few lines of context. From the harness, use `build/vm/console.log` or `build/vng/dmesg.txt`.
+      render: text
+  - type: textarea
+    id: check
+    attributes:
+      label: moobfs-check output
+      description: Output of `moobfs-check <lower dir>` on the lower tree after the problem, if applicable (JSON; redact paths if needed).
+      render: json
+  - type: textarea
     id: evidence
     attributes:
-      label: Relevant logs
-      description: Include the failure and surrounding context, not an environment dump.
+      label: Other logs
+      description: Include the failure and surrounding context, not an environment dump. Host OS, Docker and QEMU versions help when the harness itself fails.
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: This report contains no real agent memories, credentials or personal data.
+          required: true
+        - label: This is not a vulnerability (otherwise I will use SECURITY.md).
+          required: true

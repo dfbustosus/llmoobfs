@@ -7,6 +7,46 @@
 [![CI](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml)
 [![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-blue)](LICENSE)
 
+> **Experimental status. Not released, not for production use.** Facts verified in this
+> repository as of 2026-10-10:
+> - tested on **one kernel series**, in a VM: Debian 6.12.111 in QEMU (`make vm-test`) and
+>   upstream 6.12.112 under KASAN/UBSAN/lockdep (`kasan.yml`); over ext4, btrfs and XFS only;
+> - the attribute index lives **only in RAM**, bounded by `index_budget`, and is rebuilt at
+>   every mount;
+> - mounting requires **`CAP_SYS_ADMIN` in the initial user namespace**; user-namespace mounts
+>   and idmapped mounts are refused;
+> - the **UAPI v1** (`QUERY`, `GET_INFO`) may change; there is no compatibility promise;
+> - **no performance numbers have been measured** (M4 pending); no speed or efficiency claim is made;
+> - our own tests found and fixed **three kernel-side defects** during development (journals
+>   [0015](docs/history/0015-phase-2e-investigation.md) and
+>   [0016](docs/history/0016-kasan-lockdep-harness.md)); there has been **no external audit**;
+> - reflink, deduplication and durability come from the lower filesystem, not from MoobFS.
+>
+> Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Language policy: code,
+> commits, issues, pull requests and this README are in English; documents under `docs/` may be
+> in Portuguese or English, with ADRs and specifications translated on request.
+
+## At a glance
+
+**What it is.** A native Linux kernel module, `moobfs_layer.ko`, mounted as a stacked layer
+over a directory of a mature filesystem (ext4, btrfs or XFS). Memories are ordinary files;
+their metadata are typed extended attributes (`user.moob.*`) that the module validates on
+write and indexes in RAM. A `QUERY` ioctl on the mount root answers conjunctive attribute
+predicates from the kernel, returning only entries the caller could open under POSIX
+permissions and ACLs. Everything stays readable with plain Unix tools without the layer.
+A read-only M1 image format with shared physical payloads is kept as a regression.
+
+**What it is not.** Not FUSE and not a daemon: there is no user-space server, socket or
+background process. No semantic or vector search in the kernel: ranking, embeddings and
+context assembly belong to the client. Not a database replacement; for anything beyond a
+disposable VM today, SQLite or plain files remain the recommendation
+([value assessment](docs/value-assessment.md)). No persistence of the index, no snapshots and no
+transactions of its own; durability, reflink and dedupe are the lower filesystem's.
+
+**How to check any claim here.** Run `make vm-test` and read `build/vm/console.log`
+([testing guide](docs/testing.md)); set up the environment with
+[docs/development.md](docs/development.md).
+
 ## Project goal
 
 MoobFS aims to provide a filesystem-level storage foundation for persistent memory

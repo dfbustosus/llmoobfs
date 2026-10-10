@@ -2,6 +2,19 @@
 
 ## Unreleased — 2026-10-10
 
+- Community readiness (plan `docs/community-plan.md`, actions 1–14, journal 0024): Contributor
+  Covenant 2.1 as `CODE_OF_CONDUCT.md`; `SECURITY.md` with scope, what to include, response
+  targets (acknowledge in 7 days, assessment in 30, updates every 30), coordinated disclosure,
+  CVE via GitHub, credit, no bounty; `CONTRIBUTING.md` rewritten with the experimental stage,
+  language policy, DCO (`Signed-off-by` required), commit style, history and scope rules, testing
+  requirements, review rule (one maintainer plus one recorded external review for `layer/`),
+  no performance claims without evidence; PR template checklist; issue templates revised
+  (`bug_report`, `proposal`, `config`) and added (`test_failure`, `review_request`);
+  `docs/labels.md`; `docs/development.md` (new) and `docs/testing.md` restructured with a marker
+  table; experimental-status banner and "At a glance" in both READMEs; `ROADMAP.md` in three
+  evidence states; CI `Lint` job (shellcheck, SPDX headers, DCO check on pull requests); KASAN
+  workflow now also runs on pull requests touching `layer/` or `vm/`. Documentation and
+  configuration only; no code or test changes.
 - `docs/project-review-2026-10-10.md`: implementation and roadmap review, static QUERY
   correctness findings, configurations requiring Linux reproduction, and a proposed
   focused benchmark and agent-memory demonstration. Analysis only; no code fixes.

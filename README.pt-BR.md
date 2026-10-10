@@ -4,6 +4,26 @@
 
 [English](README.md) · [Site](https://studiomoob.github.io/llmoobfs/) · [Contribuição](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
+> **Estágio experimental. Sem versão lançada; não use em produção.** Fatos verificados neste
+> repositório em 2026-10-10:
+> - testado em **uma só série de kernel**, em VM: Debian 6.12.111 no QEMU (`make vm-test`) e
+>   upstream 6.12.112 sob KASAN/UBSAN/lockdep (`kasan.yml`); apenas sobre ext4, btrfs e XFS;
+> - o índice de atributos vive **somente em RAM**, limitado por `index_budget`, e é reconstruído
+>   a cada montagem;
+> - montar exige **`CAP_SYS_ADMIN` no namespace de usuário inicial**; montagens em user
+>   namespace e montagens idmapped são recusadas;
+> - a **UAPI v1** (`QUERY`, `GET_INFO`) pode mudar; não há promessa de compatibilidade;
+> - **nenhum número de desempenho foi medido** (M4 pendente); nenhuma alegação de velocidade ou
+>   eficiência é feita;
+> - os próprios testes do projeto encontraram e corrigiram **três defeitos no lado do kernel**
+>   durante o desenvolvimento (registros [0015](docs/history/0015-phase-2e-investigation.md) e
+>   [0016](docs/history/0016-kasan-lockdep-harness.md)); **não houve auditoria externa**;
+> - reflink, deduplicação e durabilidade vêm do filesystem inferior, não do MoobFS.
+>
+> Contribuições são bem-vindas: veja [CONTRIBUTING.md](CONTRIBUTING.md). Política de idioma:
+> código, commits, issues, pull requests e o README principal em inglês; documentos em `docs/`
+> podem estar em português ou inglês, com ADRs e especificações traduzidos sob demanda.
+
 ## Objetivo do projeto
 
 O MoobFS busca oferecer uma base de armazenamento, no nível de filesystem, para
