@@ -45,30 +45,36 @@ cenário "cliente semântico inteiro" sobre A, B e C, onde o banco é parte do c
 ## Cargas
 
 Cada carga é um programa determinístico com semente fixa, versionado no repositório, que
-grava os mesmos bytes e os mesmos atributos em A, B e C.
+grava os mesmos bytes e os mesmos atributos em A, B e C, e cujos resultados de consulta são
+validados contra o oráculo (`tools/moobfs-index`) antes de qualquer medição de tempo. Uma
+consulta truncada não conta como completa.
 
-| Carga | Operações | O que mede |
+| ID | Operação | O que mede |
 | --- | --- | --- |
-| criar | tmp + atributos + fsync + rename + fsync do diretório | latência de criação, amplificação de escrita |
-| ler por caminho | open + read de memórias conhecidas | custo da passagem |
-| consultar | `QUERY` em C; SQL equivalente em A e B; mesmos predicados, mesmos resultados obrigatórios | pergunta 1 |
-| atualizar atributo | `setxattr` em memórias existentes | custo de validação e de índice |
-| escrita concorrente | N processos criando em diretórios distintos e no mesmo diretório | locks e índice sob contenção |
-| leitura concorrente | N processos consultando e lendo | lock de leitura do índice |
-| compartilhar | `FICLONE` de memórias idênticas; `duperemove` | pergunta 3, só em B e C sobre btrfs/XFS |
-| remover | `unlink` com e sem descritores abertos | custo de retirada do índice |
-| remontar | `umount` + `mount`; medir até o primeiro `QUERY` responder | tempo de varredura e memória do índice |
-| recuperar | `dm-log-writes` com marcas; replay; verificação | integridade, sem métrica de tempo |
+| W1 | criação: tmp + atributos + fsync + rename + fsync do diretório | latência de criação, amplificação de escrita |
+| W2 | leitura por caminho conhecido | custo da passagem |
+| W3 | consulta estruturada por 1 a 4 atributos (`QUERY` em C; SQL com índices equivalentes em A e B) | pergunta 1; base para decidir `QUERY_BATCH` |
+| W4 | atualização e remoção de atributos | validação e índice |
+| W5 | renomeação e remoção concorrentes com consultas | locks e consistência do índice |
+| W6 | montagem com índice frio (caches de página descartados) | tempo de varredura |
+| W7 | remontagem e reconstrução do índice com cache quente | idem, separando I/O de CPU |
+| W8 | cargas mistas concorrentes (1, 10, 100 processos) | contenção |
+| W9 | fsync, durabilidade e recuperação (`dm-log-writes`, marcas, replay) | integridade; sem métrica de tempo |
 
 Cliente real: a mesma sessão do ai-memory capturada e reproduzida sobre A, B e C.
 
-## Escalas e concorrência
+## Escalas e perfis
 
-Escalas iniciais compatíveis com o orçamento atual do índice: 1 mil, 10 mil e 65 mil inodes
-com 8 atributos tipados cada. Acima disso, medir o ponto em que a montagem é recusada por
-orçamento e o custo de subi-lo (`index_budget=`); 1 milhão e 10 milhões são hipóteses a testar
-só depois desses números, e podem simplesmente mostrar o limite da abordagem em memória.
-Concorrência: 1, 10 e 100 processos; 1.000 só se 100 não saturar a VM.
+S1 1.000, S2 5.000, S3 10.000, S4 25.000, S5 40.000, S6 50.000 a 65.000 inodes, conforme a
+capacidade observada; perfis de 3, 8 e 16 atributos tipados por inode, com cardinalidade,
+tamanho e distribuição dos valores registrados. Esses números acompanham o orçamento atual do
+índice (128 MiB) e não são limites definitivos.
+
+Saturação do índice: usando `GET_INFO` (`index_budget`, `index_used`, `index_entries`,
+`index_inodes`, flags), medir `U = index_used / index_budget` em 50%, 70%, 85%, 95% e 100%,
+registrando inodes reais, atributos, RAM, tempo de montagem e de reconstrução, p99 de W3,
+e o comportamento quando a montagem é recusada por orçamento ou o índice fica incompleto.
+Nenhuma persistência de índice é implementada antes de esses números existirem.
 
 ## Métricas
 
@@ -80,11 +86,18 @@ de montagem, tempo até o índice responder, integridade após queda.
 ## Método
 
 - Hardware, kernel, versões de ferramentas e imagens registrados em `environment.txt`.
-- Aquecimento de uma execução descartada; no mínimo cinco repetições; relatar mediana e
-  dispersão (intervalo p5–p95 entre repetições). Resultados com dispersão acima de 20% são
-  reportados como inconclusivos.
-- Mesmo dataset, gerado por semente, para A, B e C; validação de que os resultados das
-  consultas são idênticos entre sistemas antes de medir tempo.
+- Dataset determinístico; aquecimento de 60 s; medição de 180 s; no mínimo 7 repetições;
+  ordem dos baselines alternada entre repetições; resultados brutos preservados; mediana e
+  dispersão (p5–p95 entre repetições) reportadas; dispersão acima de 20% marca o resultado
+  como inconclusivo. Durações e repetições são ajustadas pela estabilidade observada.
+- Latências separadas por tipo de operação; nunca uma distribuição única misturando
+  leitura, escrita e consulta.
+- Amplificação de escrita: `WA_logical = bytes gravados no dispositivo / bytes úteis
+  alterados` e `WA_relative = bytes gravados com a camada / bytes gravados no baseline
+  equivalente`, com journal, writeback, cache e flushes controlados e sem outros processos
+  gravando; qualquer diferença entre C e seu baseline é investigada na origem, já que a
+  persistência é delegada ao inferior.
+- Montagem e reconstrução medidas em cache frio e quente, com as condições explícitas.
 - VM dedicada com KVM; emulação (TCG) serve para correção, não para números.
 - Nenhum número estimado é publicado como medido; cada tabela cita o commit, o comando e o
   arquivo de evidência.

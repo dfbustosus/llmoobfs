@@ -40,3 +40,16 @@ repositório e com as ADRs.
 
 `docs/benchmark-plan.md` (novo), `ROADMAP.md` (M3 e M4), `docs/ecosystem.md`, este registro.
 Nenhum código.
+
+## Adendo (mesmo dia): segunda rodada da revisão externa
+
+A revisão respondeu com um plano M3/M4 alinhado às ADRs. Incorporado: identidade lógica
+`(namespace, agent, memory_id)` como atributos tipados comuns, gerados pelo cliente, sem
+atributos reservados nem contadores no kernel (a proposta anterior de `id`/`rev`/`mrev`
+atribuídos pela camada fica adiada por custo e por criar estado não reproduzível pelo
+cliente); invariantes de isolamento e a correção do `QUERY`, que hoje devolve toda entrada do
+índice sem verificar as permissões do chamador; `QUERY_BATCH` e `READ_BATCH` condicionados à
+medição de W2 e W3; revisão lógica e histórico mantidos no cliente, cursor de enumeração só
+se o M4 justificar; cargas W1 a W9, escalas S1 a S6, perfis de 3, 8 e 16 atributos,
+aquecimento, repetições, ordem alternada, fórmulas de amplificação de escrita e pontos de
+saturação do índice. `docs/spec-m3.md` e `docs/benchmark-plan.md` reescritos de acordo.

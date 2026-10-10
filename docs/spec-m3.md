@@ -1,138 +1,119 @@
-# Especificação do M3 — identidade, isolamento, proveniência e revisões
+# Especificação do M3 — identidade, isolamento e operações de consulta
 
-Estado: **proposta** (2026-10-10). Nada implementado. Decisões de base: ADR-0005 (memória =
-arquivo com atributos tipados; semântica fora do kernel), ADR-0007 (camada sobre FS maduro;
-git versiona conteúdo; snapshots do inferior) e registro 0019 (isolamento, lote e cursor
-adotados a partir de revisão externa). Depende do M2 concluído (fases 2a a 2e validadas).
+Estado: **proposta** (2026-10-10, revisada no mesmo dia após revisão externa; ver registro
+0019). Nada implementado. Decisões de base: ADR-0005, ADR-0007. Depende do M2 concluído.
 
-## 1. Problema
+## 1. Diagnóstico do que existe (evidência no código)
 
-O M2 responde "quais arquivos têm estes atributos". Para servir vários agentes sobre o mesmo
-armazenamento faltam quatro coisas que nenhum cliente consegue construir sozinho de forma
-consistente por cima de um diretório: identidade estável de cada memória, isolamento entre
-agentes e namespaces, proveniência verificável e consulta temporal, e um jeito barato de
-saber o que mudou desde a última vez. Tudo isso sem substituir o git, que continua sendo o
-histórico de conteúdo, e sem lógica de política no kernel.
+| Proposta | Já existe? | Evidência | Mudança necessária | Risco |
+| --- | --- | --- | --- | --- |
+| Atributos `namespace`, `agent`, `memory_id` como strings tipadas | Sim, como qualquer `user.moob.<nome>` de tipo `string` até 1 KiB, nome `[a-z0-9_.]` ≤ 64 bytes | `include/moobfs_attr.h` (`MOOB_ATTR_STRING_MAX`, `MOOB_ATTR_NAME_MAX`), validação em `moobl_typed_check` (`layer/main.c`), índice por nome em `layer/index.c` | Nenhuma no kernel; só convenção documentada | nenhum |
+| `QUERY` por esses atributos, em conjunção, com prefixo | Sim | `do_query`, `entry_matches` em `layer/index.c`; fase 2d comparada ao oráculo (registro 0014) | nenhuma | nenhum |
+| **`QUERY` respeita permissões do chamador** | **Não** | `fill_result` (`layer/index.c`) devolve inode e caminho de toda entrada do índice; a única verificação é `file->f_path.dentry == sb->s_root` em `moobl_root_ioctl`; o índice é construído com as credenciais do montador (`override_creds` em `moobl_index_build`) | filtrar resultados pelas credenciais do chamador | **vazamento de existência e de caminhos entre usuários; corrigir antes de qualquer uso multiusuário** |
+| Identidade estável sob `rename` | Parcial | o índice é por inode; `moobl_index_renamed` só atualiza o caminho | nenhuma para identidade por atributo (o atributo acompanha o inode) | nenhum |
+| Revisão lógica, histórico, cursor de mudanças | Não | índice volátil, reconstruído na montagem (`moobl_index_build`); nenhum contador de revisão | ver §5 | — |
+| Consulta em lote | Não | um `QUERY` por chamada, até 4.096 resultados (`MOOB_QUERY_MAX_LIMIT`) | ver §4 | — |
+| Leitura em lote de conteúdo | Não | resultados trazem caminho; o cliente abre um a um | ver §4 | — |
 
-## 2. Modelo
+## 2. Modelo de identidade
 
-Três conceitos, todos expressos com o que já existe (diretórios, permissões POSIX, atributos
-tipados), mais um contador por mount:
+Identidade lógica `(namespace, agent, memory_id)` expressa em três atributos tipados comuns,
+gerados e garantidos únicos **pelo cliente**:
 
-| Conceito | Representação | Quem define |
+| Atributo | Tipo | Regra |
 | --- | --- | --- |
-| Namespace | Diretório de primeiro nível sob o mount, com dono e modo POSIX; atributo `user.moob.ns` (string) no diretório | administrador do mount, por `mkdir` e `chmod`/`chown` |
-| Agente | Usuário ou grupo POSIX; atributo `user.moob.agent` (string) em cada memória que o agente cria | o próprio agente, ao gravar |
-| Memória | Arquivo; atributos reservados `user.moob.id` (raw, 16 bytes, UUID v7 atribuído pela camada na criação se ausente), `user.moob.rev` (int64, revisão da memória), `user.moob.mrev` (int64, revisão do mount em que foi gravada) | a camada |
+| `user.moob.namespace` | string, ≤ 128 bytes recomendados | domínio lógico; opaco para o kernel |
+| `user.moob.agent` | string, ≤ 128 bytes | identidade do agente que criou ou atualizou; opaco |
+| `user.moob.memory_id` | string, ≤ 128 bytes; recomendação UUID v7 em texto | identidade estável; sobrevive a `rename` e a `FICLONE` (cópia carrega o atributo, o cliente decide se gera outro) |
 
-Revisão do mount (`mrev`): contador monotônico de 64 bits, por superbloco, incrementado a
-cada operação que altera conteúdo ou atributos tipados de uma memória, e persistido no
-inferior como `user.moob.mrev` na raiz a cada incremento (uma escrita de xattr; custo medido
-no M4). Após remontagem, continua do valor persistido. Não é um relógio: é um número de
-sequência que permite perguntar "o que mudou desde a revisão N".
+O kernel não valida unicidade nem formato além das regras gerais de tipo e nome, não
+interpreta esses atributos como credenciais e não os altera. Comparação é por bytes.
+Nenhum tipo novo e nenhum atributo reservado. A alternativa de identificadores atribuídos
+pelo kernel (`id`, `rev`, `mrev` como atributos reservados, gravados a cada escrita) foi
+avaliada e **adiada**: custaria um `setxattr` no inferior por mudança e criaria estado que o
+cliente não pode reproduzir sozinho; só volta se o M4 mostrar que o cliente não consegue
+manter identidade e revisão com custo aceitável.
 
-Revisão da memória (`rev`): contador por arquivo, incrementado pela camada a cada escrita que
-chega ao inferior através dela (`write`, `truncate`, `setxattr` tipado, `rename`). Não guarda
-versões: quem guarda conteúdo anterior é o git do cliente ou um snapshot do inferior.
+## 3. Isolamento por POSIX e correção do `QUERY`
 
-## 3. Isolamento
+Invariantes: alterar `namespace` ou `agent` não concede acesso; `QUERY` não revela memórias
+inacessíveis; o índice não contorna permissões; isolamento vale após remontagem; `rename` não
+muda identidade; hard links e reflinks não acrescentam privilégio; consultas concorrentes com
+mudanças de permissão não vazam.
 
-Regra única: a camada não inventa controle de acesso. Um agente lê e escreve o que as
-permissões POSIX do inferior permitem, verificadas em dupla (camada e inferior), como hoje.
-O que o M3 acrescenta é que **o `QUERY` respeita o mesmo isolamento**: um resultado só é
-devolvido se o chamador tiver permissão de busca em todos os diretórios do caminho e de
-leitura no arquivo, avaliadas no momento da consulta com as credenciais do chamador, não do
-montador. Hoje o `QUERY` devolve inodes e caminhos de tudo que o índice contém; isso é uma
-falha de isolamento e é corrigida aqui.
+Layout de referência (não imposto): `/<ns>/shared/` e `/<ns>/agents/<agent>/`, com donos,
+grupos e modos POSIX definidos por quem administra o mount. O módulo não provisiona nada.
 
-Namespaces são, portanto, diretórios com permissões; "agente A não vê o namespace B" é
-`chmod 0750` mais grupo. Compartilhar uma memória entre namespaces é `FICLONE` para dentro do
-outro namespace (conteúdo físico compartilhado pelo inferior, metadados e permissões próprios),
-ou link duro se o mount não usar `nolinks`. Nenhuma dessas operações é nova.
+Mudança no kernel, a única do M3 nesta forma: em `do_query`, para cada entrada candidata,
+antes de copiá-la ao usuário, resolver o caminho registrado com as credenciais do **chamador**
+por `vfs_path_lookup(sb->s_root, mnt, caminho, 0, &p)`; a resolução falha com `EACCES` se
+faltar permissão de busca em qualquer diretório do caminho, e a entrada é omitida sem erro e
+sem contar em `truncated`. Se resolver, exigir que o inode obtido seja o da entrada (protege
+contra caminho obsoleto) e `inode_permission(MAY_READ)` com as credenciais do chamador. Sem
+caminho registrado, tentar o alias de dentry em cache e aplicar as mesmas verificações;
+sem alias, omitir. `truncated` passa a contar só resultados visíveis. O lock de leitura do
+índice é liberado antes das resoluções para não dormir com ele; a lista de candidatos é
+copiada primeiro. Custo: uma resolução de caminho por resultado, limitada por `limit`; medido
+no M4 (W3).
 
-Fora do escopo: ACLs POSIX (passam pela camada se o inferior tiver), user namespaces,
-criptografia por namespace, quotas por agente.
+Responsabilidades do cliente: criar diretórios, usuários, grupos e ACLs; gerar
+identificadores; decidir o que compartilhar por `FICLONE` ou link.
 
-## 4. Proveniência
+Testes: na VM, dois uids e dois namespaces com modos distintos; consultas cruzadas devem
+omitir o namespace alheio e `truncated` não pode revelar contagem; `chmod` durante consultas
+concorrentes; remontagem e repetição; o oráculo em espaço de usuário executado como cada
+uid deve coincidir com o kernel. Regressão completa (POSIX, git, SQLite, dm-log-writes,
+dm-flakey, KASAN/lockdep). Critério de pronto: identidade estável e consultável sem segunda
+política de autorização; zero vazamento entre usuários em todos os inferiores.
 
-Atributos reservados gravados pela camada, não editáveis pelo cliente (`EPERM` em
-`setxattr`, como `user.moob.format` hoje): `id`, `rev`, `mrev`, `created` (time, primeira
-gravação através da camada), `modified` (time), `agent_last` (string: nome do usuário POSIX
-do último escritor, resolvido pelo uid). O cliente pode gravar os seus (`agent`, `source`,
-`session`, `kind`...), que seguem convenção, não verificação.
+## 4. Operações em lote: contrato, decisão condicionada a medição
 
-Verificação de conteúdo continua sendo do inferior (checksums do btrfs) ou do git; a camada
-não calcula hashes no M3. fs-verity para memórias seladas fica como extensão posterior.
+Duas candidatas, com propósitos diferentes:
 
-## 5. Consulta temporal
+- `QUERY_BATCH`: várias consultas independentes numa chamada, cada uma com a semântica exata
+  de `QUERY`, resultado e erro por consulta, sem atomicidade nem snapshot entre elas,
+  limite explícito (proposta: 64 consultas por chamada, `limit` individual ≤ 4.096,
+  memória total ≤ 64 MiB), permissões verificadas por resultado, UAPI v2 aditiva (comando
+  novo, estruturas v1 intactas).
+- `READ_BATCH`: para uma lista de inodes já obtida, devolver atributos escolhidos e os
+  primeiros K bytes de conteúdo com permissões por inode, para substituir N aberturas.
 
-Sem versões guardadas, "temporal" no M3 significa duas coisas, ambas baratas:
+Decisão: **nenhuma das duas entra antes do M4 medir** W3 (consultas) e W2 (leitura por
+caminho) contra chamadas individuais. Se o custo de chamada ao kernel não dominar, a
+implementação é dispensada e isso fica registrado. Testes obrigatórios se implementadas:
+versão desconhecida, contagem zero e acima do limite, ponteiro nulo e inválido, overflow de
+tamanho, reservados não zerados, consulta interna inválida, falha parcial, remoção, renomeação
+e `setxattr` concorrentes, resultados inacessíveis, compatibilidade com cliente v1, fuzzing
+dos parsers.
 
-- `QUERY` aceita termos sobre `rev`, `mrev`, `created` e `modified` como qualquer atributo
-  `int64`/`time` (já funciona com a UAPI v1; só exige que a camada mantenha esses atributos).
-- **Cursor de mudanças**: `MOOB_IOC_CHANGES` recebe `since` (mrev) e um limite; devolve
-  `(ino, caminho, mrev, tipo de mudança ∈ {criado, conteúdo, atributos, renomeado,
-  removido})` para tudo que mudou depois de `since`, em ordem de `mrev`, com `truncated` e o
-  maior `mrev` devolvido. Fonte: uma lista circular em memória por superbloco com as últimas
-  N mudanças (N configurável, padrão 65.536) mais o índice para o estado atual. Se `since` for
-  anterior ao que a lista ainda guarda, o ioctl devolve `EOVERFLOW` e o cliente faz varredura
-  completa. Removidos entram na lista com o caminho que tinham. Após remontagem a lista começa
-  vazia e `since` menor que o `mrev` da montagem devolve `EOVERFLOW`.
+## 5. Revisão lógica e cursor de mudanças: decisão
 
-Isso cobre "o que o agente precisa reler desde a última sessão" sem log em disco e sem
-reindexação do cliente, que era o custo que o ai-memory paga com watcher e reconciliação.
+Dois conceitos distintos: **revisão lógica persistente** (evolução de uma memória) e **cursor
+de enumeração** (progresso de uma consulta, válido no máximo por montagem).
 
-## 6. Operações em lote
+Decisão: a revisão lógica e o histórico ficam **no cliente**, com os mecanismos que já
+existem: git para conteúdo, um atributo tipado `user.moob.rev` (int64) mantido pelo cliente
+quando quiser consultá-lo pelo `QUERY`, e `modified`/`ctime` do inferior para ordenação
+grosseira. Motivos: o índice é volátil e não constitui histórico; alterações feitas fora da
+montagem não seriam vistas por um log do kernel; um log persistente no kernel duplicaria o
+git; e nenhum cliente pediu essa operação com um benefício medido. A forma de cursor
+avaliada (lista circular por montagem, `EOVERFLOW` quando expirado, `CHANGES_SINCE`) fica
+documentada como alternativa e só é reconsiderada se o M4 mostrar que a varredura do cliente
+após uma sessão custa mais do que o aceitável. Perguntas que qualquer implementação teria de
+responder antes: identidade e escopo da revisão, persistência, ordenação, concorrência,
+recuperação após falha, validade do cursor, códigos de erro, integração com git.
 
-`MOOB_IOC_READ_BATCH`: recebe até 256 inodes (saídos de `QUERY` ou `CHANGES`) e um buffer;
-devolve, por inode, atributos tipados escolhidos (lista de nomes) e os primeiros K bytes de
-conteúdo (K ≤ 64 KiB), com permissões verificadas por inode com as credenciais do chamador.
-Substitui N aberturas e 2N chamadas por uma; é a operação que o M4 mede contra "abrir um a
-um". Escrita em lote não entra: a convenção tmp + atributos + fsync + rename continua sendo
-a forma de criar memórias, por garantir atomicidade por arquivo no inferior.
-
-## 7. UAPI
-
-Extensão compatível da v1: `MOOB_UAPI_VERSION` passa a 2; `QUERY` e `GET_INFO` mantêm layout
-e semântica; `GET_INFO` ganha `mount_rev`, `changes_capacity` e `changes_oldest`; novos
-comandos `CHANGES` e `READ_BATCH`. Cliente v1 continua funcionando. Campos reservados zero,
-`ENOTTY` para comando desconhecido, testes de entradas inválidas para cada campo novo.
-
-## 8. O que muda no kernel
-
-- Interceptar as operações que alteram memória para incrementar `rev` e `mrev`, gravar os
-  atributos reservados e alimentar a lista de mudanças: `write` (no `end_write`), `truncate`,
-  `setxattr`/`removexattr` tipados, `rename`, `unlink`, `create`. Tudo em caminhos já
-  interceptados; custo adicional é um `setxattr` no inferior por mudança (medir).
-- `QUERY` passa a filtrar por permissão do chamador.
-- Dois ioctls novos e a lista circular.
-- Nada em disco além de xattrs no inferior; o inferior desmontado continua legível e
-  `moobfs-check` valida os reservados (formato, unicidade de `id`).
-
-## 9. Entradas inválidas e testes
-
-Reservados editados pelo cliente (`EPERM`); `id` duplicado no inferior (reportado por
-`moobfs-check`, a camada mantém o primeiro e registra conflito no `GET_INFO`); `since` futuro
-(`EINVAL`); `since` expirado (`EOVERFLOW`); lote acima de 256 ou K acima de 64 KiB (`EINVAL`);
-`QUERY` de um usuário sem permissão num namespace (resultado omitido, sem erro, sem vazamento
-de existência pelo `truncated`). Harness: os mesmos de M2 mais um teste multiusuário na VM
-(dois uids, dois namespaces, consultas cruzadas) e replay de queda com `dm-log-writes`
-verificando `mrev` persistido.
-
-## 10. Fases
+## 6. Fases
 
 | Fase | Entrega | Saída |
 | --- | --- | --- |
-| 3a | Atributos reservados (`id`, `rev`, `mrev`, `created`, `modified`, `agent_last`), `EPERM` para o cliente, `moobfs-check` ciente | VM: replay de queda mantém `mrev` monotônico |
-| 3b | `QUERY` com permissões do chamador; teste multiusuário | nenhum vazamento entre namespaces |
-| 3c | `CHANGES` com lista circular; `EOVERFLOW` | cliente de memória usa o cursor em vez de varredura |
-| 3d | `READ_BATCH` | M4 compara com abertura individual |
-| 3e | Cliente de aceitação de dois agentes; registro de números preliminares | critério de entrada do M4 |
+| 3a | Convenção de identidade documentada; `moobfs-check` opcionalmente verifica unicidade de `memory_id` por namespace | documento e verificação offline |
+| 3b | `QUERY` com permissões do chamador; teste multiusuário; regressão completa com KASAN/lockdep | zero vazamento; números preliminares do custo |
+| 3c | Decisões de §4 e §5 revisitadas com os números do M4 | registro em `docs/history/` |
 
-## 11. Questões em aberto
+## 7. Riscos e limitações
 
-- Persistir a lista de mudanças no inferior (arquivo oculto) para sobreviver à remontagem, ou
-  aceitar o `EOVERFLOW` e a varredura: decidir com os números do M4.
-- Se `agent_last` deve ser uid numérico (estável) ou nome (legível); proposta: ambos.
-- Se a atribuição de `id` deve ocorrer na criação ou na primeira gravação de conteúdo;
-  proposta: na primeira gravação, para não dar identidade a temporários abandonados.
+Resolver caminhos por resultado pode ser caro em consultas largas; mitigação: `limit` e
+medição. Caminhos registrados ficam obsoletos após renomear diretórios; o fallback por alias
+cobre entradas em cache e as demais são omitidas até a próxima montagem, comportamento que
+deve ser documentado e medido. Nada aqui altera a UAPI v1.
