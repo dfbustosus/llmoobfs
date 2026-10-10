@@ -8,7 +8,6 @@
 - `docs/distribution-strategy.md`: proposed deployment model (Core, Workspace, Integration),
   DKMS packaging and kernel matrix, container bind-mount limits, incremental release plan;
   nothing implemented.
-
 - `docs/spec-m3.md`: M3 specification proposal (identity, isolation, provenance, change cursor,
   batch reads).
 - `docs/benchmark-plan.md`: M4 benchmark methodology, baselines and the real clients used as

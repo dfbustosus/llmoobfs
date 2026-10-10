@@ -5,7 +5,12 @@
  *   --uid N drops privileges to uid/gid N before opening, to test isolation.
  *   query <mount> info                               prints GET_INFO fields
  *   query <mount> invalid                            checks that malformed requests are refused
+ *   query [--uid N] <mount> race <seconds>           repeats QUERY kind eq note while another
+ *                                                    process changes modes, names and inodes;
+ *                                                    every result must be well formed and
+ *                                                    openable unless it was concurrently removed
  */
+#include <time.h>
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <unistd.h>
@@ -66,6 +71,38 @@ int main(int argc, char **argv)
 		       info.lower_fs, info.caps, info.flags, (uint64_t)info.index_budget,
 		       (uint64_t)info.index_used, info.index_entries, info.index_inodes);
 		return 0;
+	}
+	if (argc >= 4 && !strcmp(argv[2], "race")) {
+		struct timespec t0, t1;
+		unsigned long iters = 0, hits = 0, gone = 0, denied = 0;
+		double secs = atof(argv[3]);
+		clock_gettime(CLOCK_MONOTONIC, &t0);
+		for (;;) {
+			__u32 i;
+			memset(&q, 0, sizeof q);
+			q.nterms = 1; strcpy(q.terms[0].name, "kind"); q.terms[0].op = MOOB_OP_EQ;
+			q.terms[0].type = MOOB_T_STRING; q.terms[0].len = 4; memcpy(q.terms[0].value, "note", 4);
+			if (run_query(fd, &q, res, MOOB_QUERY_MAX_LIMIT)) { perror("MOOB_IOC_QUERY"); return 1; }
+			CHECK(q.count <= MOOB_QUERY_MAX_LIMIT);
+			for (i = 0; i < q.count; i++) {
+				char full[8192]; int rfd;
+				CHECK(memchr(res[i].path, 0, sizeof res[i].path) != NULL);
+				if (res[i].flags & MOOB_RES_PATH_UNKNOWN) continue;	/* renamed directory: path unknown by contract */
+				CHECK(res[i].path[0] != '/' && !strstr(res[i].path, ".."));
+				snprintf(full, sizeof full, "%s/%s", argv[1], res[i].path);
+				rfd = open(full, O_RDONLY);
+				if (rfd >= 0) { hits++; close(rfd); continue; }
+				if (errno == ENOENT) { gone++; continue; }	/* removed or renamed after the answer */
+				if (errno == EACCES) { denied++; continue; }	/* chmod after the answer (TOCTOU contract) */
+				fprintf(stderr, "race: open %s: %s\n", res[i].path, strerror(errno));
+				return 1;
+			}
+			iters++;
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+			if ((t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9 >= secs) break;
+		}
+		printf("race: %lu queries, %lu openable results, %lu vanished, %lu denied after answer\n", iters, hits, gone, denied);
+		return iters ? 0 : 1;
 	}
 	if (!strcmp(argv[2], "invalid")) {
 		int sub;

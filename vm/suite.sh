@@ -194,6 +194,28 @@ run_lower() {
     # mount contract: idmapped mounts and user-namespace mounts are refused by the VFS
     $BIN/idmap idmap $LAYER || fail "contract-idmap-$fs"
     mkdir -p /tmp/userns-mnt && $BIN/idmap userns $LOWER /tmp/userns-mnt || fail "contract-userns-$fs"
+    # concurrency: chmod, rename and unlink+recreate racing with QUERY as uid 1001 for 5 s;
+    # answers must stay well formed, every result openable unless changed after the answer,
+    # and the final answer must equal the oracle
+    mkdir -p $LAYER/ns/race && chmod 0755 $LAYER/ns/race || fail "race-mkdir-$fs"
+    for i in $(seq 1 40); do echo r$i > $LAYER/ns/race/r$i.md; $BIN/moobfs-attr set $LAYER/ns/race/r$i.md kind string note >/dev/null || fail "race-attr-$fs"; done
+    chmod 0644 $LAYER/ns/race/*.md || fail "race-mode-$fs"
+    : > /tmp/race.go
+    ( n=0; while [ -e /tmp/race.go ]; do
+          i=$(( n % 40 + 1 )); n=$(( n + 1 ))
+          chmod 0600 $LAYER/ns/race/r$i.md 2>/dev/null; chmod 0644 $LAYER/ns/race/r$i.md 2>/dev/null
+          mv $LAYER/ns/race/r$i.md $LAYER/ns/race/t$i.md 2>/dev/null && mv $LAYER/ns/race/t$i.md $LAYER/ns/race/r$i.md 2>/dev/null
+          rm -f $LAYER/ns/race/r$i.md; echo r$i > $LAYER/ns/race/r$i.md; $BIN/moobfs-attr set $LAYER/ns/race/r$i.md kind string note >/dev/null 2>&1
+          [ $(( n % 7 )) -eq 0 ] && { mv $LAYER/ns/race $LAYER/ns/race2 2>/dev/null; mv $LAYER/ns/race2 $LAYER/ns/race 2>/dev/null; }
+      done ) &
+    racer=$!
+    $BIN/query --uid 1001 $LAYER race 5 | tee /tmp/race.txt || { rm -f /tmp/race.go; wait $racer; fail "race-query-$fs"; }
+    rm -f /tmp/race.go; wait $racer
+    grep -q '^race: [1-9]' /tmp/race.txt || fail "race-no-iterations-$fs"
+    chmod 0644 $LAYER/ns/race/*.md || fail "race-final-mode-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "race-final-query-$fs"
+    $BIN/moobfs-index --uid 1001 $LOWER kind eq string note > /tmp/o.txt || fail "race-final-oracle-$fs"
+    cmp -s /tmp/k.txt /tmp/o.txt || { diff /tmp/k.txt /tmp/o.txt; fail "race-final-mismatch-$fs"; }
     rm -rf $LAYER/ns || fail "iso-cleanup-$fs"
     echo "ISOLATION_PASS: $fs"
     mkdir -p $LAYER/fsx
