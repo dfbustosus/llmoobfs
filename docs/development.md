@@ -231,3 +231,12 @@ compiles against those headers. Only `make vm-test` (Debian 6.12.111 in QEMU)
 and the KASAN workflow (upstream 6.12.112) load and exercise the module, and
 only on those kernels. Write journal entries and PR descriptions accordingly:
 name the command, the kernel and the log file; never report a compile as a test.
+
+## Stale binaries between containers
+
+`build/linux` is shared by `make vm-test` (static binaries built inside the Debian container)
+and by any other Linux container used for host-side builds (for example `gcc:13` to run
+`bench/smoke.sh`). Binaries built elsewhere are newer than the sources, so `make` inside the VM
+container keeps them and the initramfs ends up with dynamically linked tools that cannot run
+there; the first symptom is an early `MOOBFS_VM_FAIL` such as `attr-set-ext4`. Run
+`rm -rf build/linux` before `make vm-test` after building in another container (journal 0025).
