@@ -146,12 +146,15 @@ Nenhum resultado malformado, nenhum erro diferente dos dois previstos, resposta 
 oráculo nos três, sem avisos de kernel; `MOOBFS_LAYER_PASS` e `MOOBFS_ACCEPTANCE_PASS`. O
 teste é de robustez e de contrato, não de desempenho: a VM roda em emulação (TCG).
 
-## KASAN sobre a branch (2026-10-10, em andamento)
+## KASAN sobre a branch (2026-10-10)
 
 Execução 38076335715: falhou em `acl-set-ext4` por ambiente (workflow sem o pacote `acl`, sem
 `setfacl` no guest virtme-ng e sem o binário `idmap`); corrigido em `.github/workflows/kasan.yml`
 e `vm/kasan-guest.sh`. Execução 38077926732: ACLs passaram; falhou em `contract-idmap-ext4`
 porque o kernel KASAN não habilitava `CONFIG_USER_NS`, logo `unshare(CLONE_NEWUSER)` falhava no
 teste. Correção: `CONFIG_NAMESPACES`, `CONFIG_USER_NS` e `CONFIG_FS_POSIX_ACL` em
-`vm/kasan.config`; nova execução disparada, resultado a registrar. Nenhum diagnóstico de kernel
-apareceu nas duas execuções até o ponto da falha.
+`vm/kasan.config`. Execução 38079499011 (kernel 6.12.112 com KASAN, UBSAN e lockdep):
+`MOOBFS_KASAN_PASS`, `ISOLATION_PASS` em ext4, btrfs e xfs com `IDMAP_REFUSED_EINVAL` e
+`USERNS_MOUNT_REFUSED_EPERM`, teste de concorrência com 41 a 75 consultas em 5 s (kernel
+instrumentado é mais lento), sem nenhum diagnóstico de kernel. A fase 3b está encerrada no
+que depende de código e teste; resta o merge em `main` por pull request.
