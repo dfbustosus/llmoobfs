@@ -76,6 +76,8 @@ stage_bin /usr/bin/sqlite3
 stage_bin /usr/sbin/dmsetup
 stage_bin /usr/sbin/mke2fs
 stage_bin /usr/sbin/e2fsck
+stage_bin /usr/bin/setfacl
+stage_bin /usr/bin/getfacl
 mkdir -p "$STAGE/usr/lib/git-core"
 ln -s /tools/git "$STAGE/usr/lib/git-core/git"
 gcc -static -O2 tests/third_party/log-writes/replay-log.c tests/third_party/log-writes/log-writes.c -o "$STAGE/replay-log"
@@ -92,6 +94,7 @@ make attr-tools BUILD=build/linux CFLAGS="-O2 -g -static"
 cp build/linux/moobfs-attr build/linux/moobfs-check build/linux/moobfs-index "$STAGE/"
 gcc -static -O2 -Wall -Wextra -Werror -Iinclude tests/query.c common/attr.c -o "$STAGE/query"
 gcc -static -O2 -Wall -Wextra -Werror tests/ipc.c -o "$STAGE/ipc"
+gcc -static -O2 -Wall -Wextra -Werror tests/idmap.c -o "$STAGE/idmap"
 gcc -static -O2 -Itests/third_party/fsx tests/third_party/fsx/fsx.c -o "$STAGE/fsx"
 MOOB_BUILD_DIR=build/linux python3 tests/test_images.py --fixtures "$STAGE/data"
 build/linux/fsck.moobfs "$STAGE/data/shared.img" > build/vm/image-report.json

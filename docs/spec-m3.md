@@ -26,8 +26,20 @@ gerados e garantidos únicos **pelo cliente**:
 | `user.moob.agent` | string, ≤ 128 bytes | identidade do agente que criou ou atualizou; opaco |
 | `user.moob.memory_id` | string, ≤ 128 bytes; recomendação UUID v7 em texto | identidade estável; sobrevive a `rename` e a `FICLONE` (cópia carrega o atributo, o cliente decide se gera outro) |
 
+Chave lógica: `(namespace, memory_id)`. `agent` é autoria ou responsabilidade, não parte da
+chave, para que outro agente atualize uma memória sem lhe mudar a identidade. O mesmo
+`memory_id` em namespaces diferentes são duas memórias distintas, que podem partilhar origem,
+conteúdo ou blocos; conteúdo igual não é identidade igual. `FICLONE` e cópia criam outro inode:
+quando a operação é uma clonagem de memória, o cliente gera um `memory_id` novo e registra a
+origem em `user.moob.origin_namespace` e `user.moob.origin_id` (strings; convenção, não
+verificação). Hard link é o mesmo inode e os mesmos atributos, logo não serve para duas
+identidades; para isso, cópia ou reflink. `moobfs-check` classifica: normal, o mesmo id em
+namespaces distintos; aviso, o mesmo id com conteúdo idêntico e sem proveniência (comparação
+de conteúdo opcional); erro, dois inodes distintos com o mesmo `(namespace, memory_id)`;
+vários caminhos para o mesmo inode não são duplicidade.
+
 O kernel não valida unicidade nem formato além das regras gerais de tipo e nome, não
-interpreta esses atributos como credenciais e não os altera. Comparação é por bytes.
+interpreta esses atributos como credenciais nem proveniência, e não os altera. Comparação é por bytes.
 Nenhum tipo novo e nenhum atributo reservado. A alternativa de identificadores atribuídos
 pelo kernel (`id`, `rev`, `mrev` como atributos reservados, gravados a cada escrita) foi
 avaliada e **adiada**: custaria um `setxattr` no inferior por mudança e criaria estado que o

@@ -40,6 +40,15 @@ int main(int argc, char **argv)
 		if (setgid(u) || setuid(u)) { perror("setuid"); return 1; }
 		argv += 2; argc -= 2;
 	}
+	if (argc >= 4 && !strcmp(argv[2], "open")) {	/* query [--uid N] <mount> open <relpath> */
+		char full[8192]; char c;
+		snprintf(full, sizeof full, "%s/%s", argv[1], argv[3]);
+		fd = open(full, O_RDONLY);
+		if (fd < 0) { printf("open %s: %s\n", argv[3], strerror(errno)); return errno == EACCES ? 3 : 2; }
+		if (read(fd, &c, 1) < 0) { printf("read %s: %s\n", argv[3], strerror(errno)); return 2; }
+		printf("open %s: ok\n", argv[3]);
+		return 0;
+	}
 	if (argc < 3)
 		return 64;
 	fd = open(argv[1], O_RDONLY | O_DIRECTORY);

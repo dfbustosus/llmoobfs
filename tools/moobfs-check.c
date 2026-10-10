@@ -14,6 +14,10 @@
 #include "moobfs_attr.h"
 
 static unsigned long files, attrs, problems;
+/* identity records for the (namespace, memory_id) uniqueness check */
+struct ident { char ns[1025]; char id[1025]; dev_t dev; ino_t ino; char *path; };
+static struct ident *idents; static size_t nidents, cidents;
+static unsigned long ident_conflicts, ident_cross_namespace;
 static int first_problem = 1;
 static size_t root_len;
 
@@ -95,7 +99,49 @@ static int visit(const char *path, const struct stat *sb, int flag, struct FTW *
 	if (per_file > MOOB_ATTR_MAX_PER_FILE)
 		report(path, NULL, "more typed attributes than the per-file limit");
 	free(list);
+	{	/* collect (namespace, memory_id) when both are well-formed strings */
+		ma_u8 ns[MOOB_ATTR_VALUE_MAX + 1], id[MOOB_ATTR_VALUE_MAX + 1];
+		ssize_t a = lgetxattr(path, MOOB_ATTR_PREFIX "namespace", ns, sizeof ns);
+		ssize_t b = lgetxattr(path, MOOB_ATTR_PREFIX "memory_id", id, sizeof id);
+		if (a > 1 && b > 1 && ns[0] == MOOB_T_STRING && id[0] == MOOB_T_STRING &&
+		    !moob_attr_validate(ns, (size_t)a) && !moob_attr_validate(id, (size_t)b)) {
+			if (nidents == cidents) {
+				cidents = cidents ? cidents * 2 : 256;
+				idents = realloc(idents, cidents * sizeof *idents);
+				if (!idents) return 1;
+			}
+			memcpy(idents[nidents].ns, ns + 1, (size_t)a - 1); idents[nidents].ns[a - 1] = 0;
+			memcpy(idents[nidents].id, id + 1, (size_t)b - 1); idents[nidents].id[b - 1] = 0;
+			idents[nidents].dev = sb->st_dev; idents[nidents].ino = sb->st_ino;
+			idents[nidents].path = strdup(path);
+			nidents++;
+		}
+	}
 	return 0;
+}
+
+static int ident_cmp(const void *x, const void *y)
+{
+	const struct ident *a = x, *b = y; int c = strcmp(a->id, b->id);
+	if (c) return c;
+	c = strcmp(a->ns, b->ns);
+	if (c) return c;
+	return a->ino < b->ino ? -1 : a->ino > b->ino;
+}
+
+/* Two distinct inodes with the same (namespace, memory_id) are a conflict; the same inode
+ * reached by several paths (hard links) is not; the same id in another namespace is normal. */
+static void check_identities(void)
+{
+	size_t i;
+	qsort(idents, nidents, sizeof *idents, ident_cmp);
+	for (i = 1; i < nidents; i++) {
+		if (strcmp(idents[i].id, idents[i - 1].id)) continue;
+		if (strcmp(idents[i].ns, idents[i - 1].ns)) { ident_cross_namespace++; continue; }
+		if (idents[i].ino == idents[i - 1].ino && idents[i].dev == idents[i - 1].dev) continue;
+		report(idents[i].path, "memory_id", "duplicate (namespace, memory_id) on a different inode");
+		ident_conflicts++;
+	}
 }
 
 int main(int argc, char **argv)
@@ -127,7 +173,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "moobfs-check: %s: %s\n", argv[1], strerror(errno));
 		return 1;
 	}
-	printf("%s],\n  \"files\": %lu,\n  \"typed_attributes\": %lu,\n  \"problem_count\": %lu\n}\n",
-	       first_problem ? "" : "\n  ", files, attrs, problems);
+	check_identities();
+	printf("%s],\n  \"files\": %lu,\n  \"typed_attributes\": %lu,\n  \"identities\": %zu,\n"
+	       "  \"identity_conflicts\": %lu,\n  \"same_id_other_namespace\": %lu,\n  \"problem_count\": %lu\n}\n",
+	       first_problem ? "" : "\n  ", files, attrs, nidents, ident_conflicts, ident_cross_namespace, problems);
 	return problems ? 2 : 0;
 }

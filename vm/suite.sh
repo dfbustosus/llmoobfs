@@ -166,6 +166,34 @@ run_lower() {
     mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "iso-remount-$fs"
     $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-remount-$fs"
     grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-leak-remount-$fs"
+    # ACLs: QUERY must agree with open() under the same uid when ACLs grant or deny
+    chmod 0700 $LAYER/ns/b && chmod 0600 $LAYER/ns/b/m1.md || fail "acl-reset-$fs"
+    $TOOLS/setfacl -m u:1001:x $LAYER/ns/b && $TOOLS/setfacl -m u:1001:r $LAYER/ns/b/m2.md || fail "acl-set-$fs"
+    $BIN/query --uid 1001 $LAYER open ns/b/m2.md | grep -q ': ok' || fail "acl-open-grant-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "acl-query-$fs"
+    grep -q 'ns/b/m2.md' /tmp/k.txt || fail "acl-grant-not-seen-$fs"
+    grep -q 'ns/b/m1.md' /tmp/k.txt && fail "acl-overreach-$fs"
+    $TOOLS/setfacl -m u:1001:- $LAYER/ns/shared/m1.md || fail "acl-deny-$fs"
+    $BIN/query --uid 1001 $LAYER open ns/shared/m1.md | grep -q 'Permission denied' || fail "acl-open-deny-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "acl-query2-$fs"
+    grep -q 'ns/shared/m1.md' /tmp/k.txt && fail "acl-deny-leak-$fs"
+    $TOOLS/setfacl -b $LAYER/ns/b $LAYER/ns/b/m2.md $LAYER/ns/shared/m1.md || fail "acl-clear-$fs"
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "acl-query3-$fs"
+    grep -q 'ns/b/m2.md' /tmp/k.txt && fail "acl-clear-leak-$fs"
+    grep -q 'ns/shared/m1.md' /tmp/k.txt || fail "acl-clear-missing-$fs"
+    # identity (spec-m3 §2): same id across namespaces is normal, on two inodes in one namespace is an error
+    for f in ns/a/m1.md ns/shared/m1.md; do $BIN/moobfs-attr set $LAYER/$f memory_id string id-1 || fail "id-set-$fs"; done
+    $BIN/moobfs-attr set $LAYER/ns/a/m1.md namespace string a && $BIN/moobfs-attr set $LAYER/ns/shared/m1.md namespace string shared || fail "id-ns-$fs"
+    $BIN/moobfs-check $LOWER > /tmp/check.json || { cat /tmp/check.json; fail "id-check-normal-$fs"; }
+    grep -q '"same_id_other_namespace": 1' /tmp/check.json || fail "id-cross-count-$fs"
+    ln $LAYER/ns/a/m1.md $LAYER/ns/a/link1.md 2>/dev/null && { $BIN/moobfs-check $LOWER > /tmp/check.json || fail "id-hardlink-flagged-$fs"; rm $LAYER/ns/a/link1.md; }
+    $BIN/moobfs-attr set $LAYER/ns/a/m2.md memory_id string id-1 && $BIN/moobfs-attr set $LAYER/ns/a/m2.md namespace string a || fail "id-dup-set-$fs"
+    $BIN/moobfs-check $LOWER > /tmp/check.json; [ $? -eq 2 ] || fail "id-dup-not-detected-$fs"
+    grep -q 'duplicate (namespace, memory_id)' /tmp/check.json || fail "id-dup-reason-$fs"
+    $BIN/moobfs-attr rm $LAYER/ns/a/m2.md memory_id || fail "id-dup-rm-$fs"
+    # mount contract: idmapped mounts and user-namespace mounts are refused by the VFS
+    $BIN/idmap idmap $LAYER || fail "contract-idmap-$fs"
+    mkdir -p /tmp/userns-mnt && $BIN/idmap userns $LOWER /tmp/userns-mnt || fail "contract-userns-$fs"
     rm -rf $LAYER/ns || fail "iso-cleanup-$fs"
     echo "ISOLATION_PASS: $fs"
     mkdir -p $LAYER/fsx
