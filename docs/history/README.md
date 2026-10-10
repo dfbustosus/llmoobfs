@@ -25,3 +25,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0005 — Modelo de memória e o Be File System como referência](0005-bfs-reference-memory-model.md)
 - [0006 — Publicação da ADR-0005 e levantamento do ecossistema livre](0006-ecosystem-survey.md)
 - [0007 — Leitura técnica do ai-memory e posição relativa](0007-ai-memory-reading.md)
+- [0008 — Infraestrutura do kernel reutilizável e especificação do M2 com escrita POSIX](0008-m2-spec-kernel-infra.md)

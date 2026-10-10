@@ -102,7 +102,9 @@ development. KASAN/lockdep kernel validation and performance benchmarks are pend
 ## Documentation and project memory
 
 - [Implemented disk format](docs/format-m1.md) and [testing guide](docs/testing.md).
-- [Original full MVP proposal](docs/native-mvp.md), in Portuguese; future transactional design.
+- [M2 specification](docs/spec-m2.md) (proposal, in Portuguese): writable POSIX volume on jbd2 and iomap,
+  built on [reusable kernel infrastructure](docs/kernel-infrastructure.md).
+- [Original full MVP proposal](docs/native-mvp.md), in Portuguese; its write interface is superseded by ADR-0006.
 - [Architecture decisions](docs/decisions/), [technical journal](docs/history/) and
   [free-software ecosystem survey](docs/ecosystem.md).
 - [AI-assisted development rules](docs/ai-workflow.md), shared through `AGENTS.md`, `CLAUDE.md` and Cursor rules.

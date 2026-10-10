@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-10-10
 
+- ADR-0006 and `docs/spec-m2.md`: M2 specified as a writable POSIX volume on jbd2 + iomap with
+  shared extents via `remap_file_range`; `docs/kernel-infrastructure.md` lists the reused kernel
+  infrastructure verified against v6.12. Proposal only; no code.
 - `docs/research-ai-memory.md`: code-level reading of akitaonrails/ai-memory and its
   relation to MoobFS; M2 now needs POSIX writes to host a real client.
 - Site: interactive plan page (`site/plan.html`) showing inputs, processing and outputs per milestone.

@@ -41,6 +41,8 @@ mecanismo de replay próprio.
 
 ## 4. Estruturas em disco e em memória no kernel
 
+Levantamento detalhado e verificado contra o v6.12 em [kernel-infrastructure.md](kernel-infrastructure.md).
+
 | Recurso | Uso |
 | --- | --- |
 | `lib/btree.c` | B+ tree genérica em memória do kernel. Não serve para disco, mas evita escrever índice em memória. |
