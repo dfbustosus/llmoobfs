@@ -48,3 +48,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0028 — Perfil do `QUERY` e revalidação de dentry compatível com RCU-walk](0028-rcu-walk-revalidation.md)
 - [0029 — Série de escala do `QUERY` (1000 a 60 000 memórias)](0029-query-scale-series.md)
 - [0030 — Verificações: fluxo de mudanças, Landlock e canal de tempo do `QUERY`](0030-verification-notify-landlock-timing.md)
+- [0031 — Tempo de remontagem com 25 000 a 60 000 memórias](0031-remount-time.md)
