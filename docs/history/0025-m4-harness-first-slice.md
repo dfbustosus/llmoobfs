@@ -161,3 +161,13 @@ tarball 6.12.112 com o mesmo SHA-256 do workflow KASAN, `bindeb-pkg`, instalaç�
 suíte inteira no host como portão, `HOST_SETUP_PASS`). Caminho C documentado em
 `docs/bench-accelerated-guest.md`. Nenhum dos três foi executado ainda: a primeira execução
 será na instância, e o resultado entra aqui ou em registro próprio.
+
+Primeira execução de `bench/kernel-build.sh` na VM da Azure (Standard_D4as_v4, AMD EPYC 7763,
+Ubuntu 24.04 com kernel 6.17.0-1022-azure, 2026-10-11): compilação e instalação concluídas a
+partir do config do kernel Azure. Três ajustes vieram dela: o sufixo de versão saía duplicado
+(`-moobfs-bench-moobfs-bench`, porque o fragmento e o `make` definiam `LOCALVERSION`), o
+`dpkg -i` incluía o pacote `-dbg`, que falha sem informação de depuração, e o GRUB mantém o
+kernel mais novo como padrão, então o 6.12 precisa de `grub-reboot` (um boot só, com volta
+automática ao 6.17 se falhar). Corrigidos o sufixo e o pacote; o `grub-reboot` está no roteiro.
+A instância usa Trusted launch com Secure Boot ligado, que precisa ser desligado para o kernel
+não assinado. O kernel já instalado na instância mantém o sufixo duplicado; não é recompilado.

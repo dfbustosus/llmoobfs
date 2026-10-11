@@ -34,8 +34,11 @@ echo "configured linux-$KERNEL_VERSION from /boot/config-$(uname -r) + vm/bench.
 make -j"$(nproc)" bindeb-pkg LOCALVERSION=-moobfs-bench KDEB_PKGVERSION="$KERNEL_VERSION-1" > "$build/build.log" 2>&1 || { tail -40 "$build/build.log"; exit 1; }
 cd "$build"
 # the -dbg package is not needed and fails to install without debug info; install image and headers only
-pkgs=$(ls -1 linux-image-*moobfs-bench*.deb linux-headers-*moobfs-bench*.deb | grep -v -- '-dbg_')
-echo "$pkgs"
+pkgs=""
+for f in linux-image-*moobfs-bench*.deb linux-headers-*moobfs-bench*.deb; do
+    case $f in *-dbg_*) ;; *) [ -e "$f" ] && pkgs="$pkgs $f" ;; esac
+done
+echo "packages:$pkgs"
 if [ "$(id -u)" = 0 ]; then
     # shellcheck disable=SC2086
     dpkg -i $pkgs
@@ -43,5 +46,5 @@ if [ "$(id -u)" = 0 ]; then
     echo "  GRUB_DEFAULT=saved in /etc/default/grub, update-grub, then grub-reboot '<entry for ${KERNEL_VERSION}-moobfs-bench>'"
     echo "and check: uname -r  (expected ${KERNEL_VERSION}-moobfs-bench)"
 else
-    echo "not root: install with  sudo dpkg -i $(echo "$pkgs" | sed "s|^|$build/|" | tr '\n' ' ')"
+    echo "not root: install with  cd $build && sudo dpkg -i$pkgs"
 fi
