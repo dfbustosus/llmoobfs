@@ -149,3 +149,15 @@ filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5
 
 Reavaliar Q9; roteiro para um convidado Linux com aceleração (x86 com KVM, ou arm64 com
 Hypervisor.framework no Mac como campanha preliminar); então números e o relatório do M4.
+
+## Preparação de host de benchmark (2026-10-11)
+
+Decisão do mantenedor: a primeira campanha roda numa VM de nuvem x86_64 (Azure, D4as_v5 ou
+similar, Ubuntu 24.04, tipo de segurança Standard) usada como host, com o módulo no kernel da
+própria instância, em vez de uma VM aninhada. Adicionados `vm/bench.config` (fragmento sem
+sanitizadores nem lockdep sobre o config da distribuição), `bench/kernel-build.sh` (mesmo
+tarball 6.12.112 com o mesmo SHA-256 do workflow KASAN, `bindeb-pkg`, instalação) e
+`bench/host-setup.sh` (formata três discos dedicados, compila módulo e ferramentas, roda a
+suíte inteira no host como portão, `HOST_SETUP_PASS`). Caminho C documentado em
+`docs/bench-accelerated-guest.md`. Nenhum dos três foi executado ainda: a primeira execução
+será na instância, e o resultado entra aqui ou em registro próprio.

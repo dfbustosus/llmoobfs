@@ -11,17 +11,44 @@ Mac com Apple Silicon isso é emulação instrução a instrução (TCG), dezena
 que o hardware e com distribuição de latências que não representa nada. O runner do GitHub
 também não tem KVM. Logo, nenhum tempo impresso por essas execuções é medida do projeto.
 
-## 2. Dois caminhos
+## 2. Três caminhos
 
 | Caminho | Hardware | Arquitetura do convidado | Valor dos números | Custo |
 | --- | --- | --- | --- | --- |
 | A. Host Linux x86_64 com KVM (bare metal ou nuvem com virtualização aninhada) | qualquer | x86_64, o mesmo kernel Debian 6.12.111 já testado | referência para o relatório do M4 | aluguel de horas ou máquina própria |
 | B. Mac Apple Silicon com Hypervisor.framework (Lima, UTM ou `qemu-system-aarch64 -accel hvf`) | o Mac de desenvolvimento | arm64, Debian 13 com kernel 6.12 arm64 | comparação relativa A/B/C na mesma máquina; arquitetura fora da matriz testada | zero |
+| C. VM de nuvem x86_64 usada como host (Azure D4as_v5, Oracle E3.Flex ou similar), com o módulo no kernel da própria instância | qualquer | x86_64, kernel 6.12.112 compilado na instância por `bench/kernel-build.sh` | medição em VM de nuvem, ambiente realista de produção; mesmo tarball do KASAN, sem instrumentação | horas de aluguel |
 
-Recomendação: B como campanha preliminar para calibrar o harness e descobrir surpresas; A para
-o relatório. Em B, o módulo é compilado para uma arquitetura nova: antes de medir, a suíte
+Recomendação (2026-10-11): C é o caminho escolhido para a primeira campanha, por juntar x86,
+custo baixo e um segundo kernel na matriz; A continua sendo a referência quando houver
+hardware dedicado; B fica como preliminar opcional. Em B, o módulo é compilado para uma arquitetura nova: antes de medir, a suíte
 inteira (`vm/suite.sh`) e uma execução sob KASAN precisam passar nesse kernel, e o relatório
 deve dizer "arm64 virtualizado, fora da matriz".
+
+## 2.1 Caminho C: VM de nuvem como host (Azure)
+
+Criação (portal da Azure): imagem Ubuntu Server 24.04 LTS x64 Gen2; tamanho
+`Standard_D4as_v5` (4 vCPU, 16 GB) ou `D4s_v5`; **tipo de segurança Standard**, não Trusted
+launch, porque o kernel compilado não é assinado e o Secure Boot o recusaria; chave SSH; só a
+porta 22; disco do SO Premium SSD 64 GB; **três discos de dados idênticos** (Premium SSD P6,
+64 GB, cache None) para ext4, btrfs e XFS; sem série B (burstable); desligamento automático.
+
+Na instância, como root, na ordem:
+
+```bash
+apt-get update && apt-get install -y build-essential flex bison libelf-dev libssl-dev bc dpkg-dev debhelper rsync kmod git
+git clone https://github.com/studiomoob/llmoobfs && cd llmoobfs
+sh bench/kernel-build.sh            # 6.12.112 a partir do config do Ubuntu + vm/bench.config; ~20 min
+reboot                              # uname -r deve mostrar 6.12.112-moobfs-bench
+lsblk                               # identificar os três discos de dados (sdc, sdd, sde ou similares)
+sh bench/host-setup.sh --ext4 /dev/sdc --btrfs /dev/sdd --xfs /dev/sde   # formata, compila, roda a suíte inteira
+```
+
+`HOST_SETUP_PASS` é o portão: a suíte completa (`MOOBFS_LAYER_PASS`, `MOOBFS_ACCEPTANCE_PASS`)
+passou nesse kernel e nesses discos, sem diagnóstico no `dmesg`. Qualquer falha vira registro
+antes de medir. Depois, calibração (§5) e campanha (§6) com os mesmos dispositivos montados.
+Se o KASAN do kernel 6.12.112 ainda não tiver rodado nessa máquina, não é necessário: o
+workflow já cobre esse kernel; o que a suíte valida aqui é o host e os discos.
 
 ## 3. Preparar o convidado (caminho B, Lima)
 
