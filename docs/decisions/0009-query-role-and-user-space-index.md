@@ -77,14 +77,31 @@ de proteger os metadados, só o conteúdo. As saídas conhecidas são:
 
 A proposta não escolhe entre elas; o M4 mede as que forem viáveis.
 
+Precedente encontrado na pesquisa (`docs/research-metadata-search.md`): o GUFI (Grand Unified
+File Index, Los Alamos, BSD-3, ativo) guarda um banco SQLite por diretório, com o dono e o modo
+do diretório de origem; cada usuário consulta com as próprias credenciais e o kernel recusa abrir
+os bancos que ele não poderia ler. Atributos estendidos que nem todo leitor do diretório pode ver
+vão para bancos separados por uid e por gid. Aplicado aqui: um índice por namespace, com as
+permissões do diretório do namespace, escrito por um indexador privilegiado alimentado pelo
+`fanotify` que nunca responde consultas; cada agente lê só os índices que poderia ler. Pendências:
+cópia de ACLs, montagens com idmap e a janela entre um `chmod` e o índice refletir a mudança.
+
 ## Alternativas
 
 - **A. Manter como está.** O `QUERY` atual, sem crescer. Simples; perde em consultas com várias
   condições e com muitos resultados, e o limite de 4096 fica como restrição declarada.
 - **B. Esta proposta.** Índice e planejamento em espaço de usuário; kernel com autorização e
   fluxo de mudanças.
-- **C. Planejador no kernel.** Escolha da condição mais seletiva, interseção de candidatos,
-  índices compostos. Rejeitada: é um banco de dados no kernel.
+- **C. Planejador no kernel.** Estatísticas, índices compostos, otimizador. Rejeitada: é um
+  banco de dados no kernel.
+- **C'. Interseção pequena no kernel, sem planejador.** As entradas já estão ordenadas por
+  (tipo, valor, inode) e a busca por chave completa já existe (`first_after`). Duas ou mais
+  condições de igualdade podem ser cruzadas avançando em paralelo pelas listas (leapfrog), sem
+  alocação. Ataca exatamente o caso medido que cresce com o tamanho do conjunto; não muda o custo
+  por resultado. É compatível com A e com B; precisa de especificação de ordem e retomada antes
+  de código. O próprio BFS do Haiku não cruza listas: escolhe uma condição por uma pontuação
+  barata (tamanho do índice) e testa as demais em cada candidato, como o MoobFS faz hoje com a
+  primeira.
 - **D. Portar o motor de consultas do BFS do Haiku** (OpenBFS, licença MIT). Rejeitada: C++ e API
   do kernel do Haiku, ligado ao formato em disco do BFS, e resolve o mesmo problema da
   alternativa C, só que com código alheio ao Linux.
@@ -105,6 +122,23 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 | RocksDB, LevelDB | Árvores LSM, escrita intensa | Sem vantagem para leitura por atributo; mais operação |
 | DuckDB | Consultas analíticas em colunas | Pensado para agregação, não para buscas pontuais de baixa latência |
 | Xapian, Tantivy | Busca textual | Outro problema; fica com o cliente (ADR-0005, item 5) |
+
+## O que a pesquisa acrescenta
+
+- **Restringir antes de calcular.** Büttcher e Clarke (FAST 2005) mostram que filtrar por
+  permissão depois de consultar vaza informação por contagens e pontuações. O `QUERY` não devolve
+  contagem nem pontuação de quem o chamador não pode ler, mas o custo de cerca de 1 µs por
+  candidato inclui candidatos de outros agentes: há um canal de tempo plausível, não medido.
+- **Não existe cursor de mudanças durável no Linux.** As propostas de journal de mudanças
+  discutidas no LSFMM de 2018 e 2019 não viraram código. Antes de criar um, usar o `fanotify` e
+  reconstruir o índice externo na montagem e em `FAN_Q_OVERFLOW`; um passo barato é expor no
+  `GET_INFO` uma época de montagem e um contador monotônico de mudanças, para o consumidor saber
+  que perdeu continuidade (exige especificação da UAPI).
+- **O Landlock não é consultado.** Ele não registra o gancho `inode_permission` nem o de leitura
+  de xattr; a autorização atual do `QUERY`, e qualquer autorização em lote feita do mesmo jeito,
+  ignora processos confinados pelo Landlock (inferido do código, não reproduzido).
+- **`setxattr` gera `FS_ATTRIB`** (`fsnotify_xattr` no 6.12), base para o fluxo de mudanças; falta
+  confirmar se a camada gera o evento também no inode inferior.
 
 ## O que o M4 precisa medir para decidir
 
