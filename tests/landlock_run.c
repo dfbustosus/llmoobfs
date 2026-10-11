@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Run a command confined by Landlock: directory listing allowed beneath <list-root>, file
- * reads allowed only beneath <read-dir>. Used to check whether QUERY results respect a
+ * reads allowed only beneath <read-dir> and beneath the directory of <command> (execve needs
+ * read access to the binary under Landlock). Used to check whether QUERY results respect a
  * Landlock policy (path-based, enforced at open time).
  *   landlock_run <list-root> <read-dir> <command> [args...]
  */
@@ -13,6 +14,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/prctl.h>
+#include <libgen.h>
+#include <limits.h>
 #include <sys/syscall.h>
 #include <linux/landlock.h>
 
@@ -38,6 +41,12 @@ int main(int argc, char **argv)
 	if (abi < 1) { perror("landlock unavailable"); return 2; }
 	rs = (int)syscall(SYS_landlock_create_ruleset, &ra, sizeof ra, 0);
 	if (rs < 0) { perror("create_ruleset"); return 2; }
+	{
+		char exe[PATH_MAX];
+
+		if (!realpath(argv[3], exe)) { perror(argv[3]); return 2; }
+		if (rule(rs, dirname(exe), LANDLOCK_ACCESS_FS_READ_FILE)) { perror("add_rule exe"); return 2; }
+	}
 	if (rule(rs, argv[1], LANDLOCK_ACCESS_FS_READ_DIR) || rule(rs, argv[2], LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR)) {
 		perror("add_rule"); return 2;
 	}
