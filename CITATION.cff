@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use or refer to MoobFS in research, please cite it as below."
+title: "MoobFS: an experimental native Linux filesystem layer for LLM-agent memory"
+type: software
+authors:
+  - name: "Studio Moob"
+    website: "https://github.com/studiomoob"
+repository-code: "https://github.com/studiomoob/llmoobfs"
+url: "https://studiomoob.github.io/llmoobfs/"
+license: GPL-2.0-only
+version: "v0.1.0-experimental"
+date-released: "2026-10-10"
+abstract: >-
+  Experimental Linux kernel module (no FUSE): a stacked filesystem layer over
+  ext4, btrfs or XFS that adds typed extended attributes, an in-memory index and
+  a QUERY ioctl whose results are authorized by the caller's POSIX credentials.
+  Research project, not for production use.
+keywords:
+  - linux-kernel
+  - filesystem
+  - stacked-filesystem
+  - extended-attributes
+  - metadata-index
+  - llm-memory

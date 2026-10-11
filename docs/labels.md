@@ -17,7 +17,11 @@ Rules:
   such an issue records that the question was answered, not that the code was
   audited.
 - `difficulty/good-first-issue` is reserved for tasks verifiable on the host or
-  in ordinary CI, without loading the module.
+  in ordinary CI, without loading the module. Such issues also carry GitHub's
+  default `good first issue` label, because the repository's `/contribute` page,
+  GitHub search and external aggregators look for that exact name.
+- `help wanted` (GitHub default) marks every open issue that an outside
+  contributor or reviewer can take; it is removed when someone is assigned.
 - `priority/p0` is for data loss, kernel crash or hang, or a leak between users;
   these usually go through `SECURITY.md` first.
 
@@ -35,6 +39,8 @@ Rules:
 | `area/bench-m4` | `#5319E7` | The M4 benchmark harness and methodology (`docs/benchmark-plan.md`, `docs/benchmark-harness.md`, future `bench/`). |
 | `area/security` | `#000000` | Security roadmap items (S1 to S11), hardening, disclosure process. Vulnerabilities themselves go through `SECURITY.md`. |
 | `difficulty/good-first-issue` | `#7057FF` | Needs no kernel work; verifiable on the host or in CI; files and done criterion listed in the issue. |
+| `good first issue` | `#7057FF` | GitHub default, kept for discovery; always paired with `difficulty/good-first-issue`. |
+| `help wanted` | `#008672` | GitHub default; open to an outside contributor or reviewer. |
 | `difficulty/intermediate` | `#008672` | Needs the VM harness or touches shared code (`common/`, tools with oracle comparison). |
 | `difficulty/kernel-expert` | `#E99695` | Touches `layer/` or kernel semantics; needs VM, KASAN and the external review rule. |
 | `priority/p0` | `#B60205` | Data loss, crash, hang or cross-user leak. Drop everything else. |
@@ -64,6 +70,8 @@ mk area/site          0052CC "GitHub Pages site and its checks"
 mk area/bench-m4      5319E7 "M4 benchmark harness and methodology"
 mk area/security      000000 "Security roadmap items and disclosure process (vulnerabilities: SECURITY.md)"
 mk difficulty/good-first-issue 7057FF "No kernel work; verifiable on the host or in CI"
+mk "good first issue"         7057FF "Paired with difficulty/good-first-issue; listed on /contribute"
+mk "help wanted"              008672 "Open to an outside contributor or reviewer"
 mk difficulty/intermediate     008672 "Needs the VM harness or touches shared code"
 mk difficulty/kernel-expert    E99695 "Touches layer/ or kernel semantics; VM, KASAN and external review"
 mk priority/p0 B60205 "Data loss, crash, hang or cross-user leak"

@@ -6,8 +6,21 @@ HEADERS = include/moobfs_format.h
 KDIR ?= /lib/modules/$(shell uname -r)/build
 BUILD ?= build/host
 
-.PHONY: all tools attr-tools bench-tools bench-smoke test fuzz module layer vm-test
+.PHONY: all help tools attr-tools bench-tools bench-smoke test fuzz lint module layer vm-test
 all: tools
+help:
+	@echo 'Host targets (macOS or Linux; never load a module on the host):'
+	@echo '  make / make tools  build mkfs.moobfs, fsck.moobfs and attr_test into $$(BUILD)'
+	@echo '  make test          attr_test unit tests and malformed-image tests'
+	@echo '  make lint          shellcheck on vm/ and scripts/ shell scripts, SPDX headers on C sources (same as CI)'
+	@echo '  make fuzz          libFuzzer over the attribute encoding (LLVM clang with libFuzzer)'
+	@echo 'Linux-only targets:'
+	@echo '  make attr-tools    moobfs-attr, moobfs-check, moobfs-index'
+	@echo '  make bench-tools   M4 harness binaries; make bench-smoke runs its smoke test'
+	@echo 'Kernel (inside the VM container, not on your host):'
+	@echo '  make vm-test       full native suite in a disposable QEMU VM; needs only Docker'
+	@echo '  make module/layer  build the kernel modules against KDIR'
+	@echo 'Details: docs/development.md and docs/testing.md'
 tools: $(BUILD)/mkfs.moobfs $(BUILD)/fsck.moobfs $(BUILD)/attr_test
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -46,6 +59,10 @@ fuzz: | $(BUILD)
 	clang -O1 -g -fsanitize=fuzzer,address,undefined -Iinclude tests/fuzz_attr.c common/attr.c -o $(BUILD)/fuzz_attr
 	mkdir -p $(BUILD)/fuzz-corpus
 	$(BUILD)/fuzz_attr -max_total_time=$(FUZZ_TIME) -max_len=4200 tests/fuzz-corpus/attr $(BUILD)/fuzz-corpus
+lint:
+	@command -v shellcheck >/dev/null 2>&1 || { echo 'shellcheck not found: apt install shellcheck, or brew install shellcheck'; exit 1; }
+	shellcheck --shell=sh --severity=warning $$(git ls-files 'vm/*.sh' 'scripts/*.sh')
+	sh scripts/check-spdx.sh
 module:
 	$(MAKE) -C $(KDIR) M=$(CURDIR)/kernel modules
 layer:

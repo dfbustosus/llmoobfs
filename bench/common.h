@@ -130,6 +130,10 @@ struct bench_rec {
 	int32_t result;		/* >= 0: bytes or result count; < 0: -errno */
 };
 
+/* For query records, op carries the shape: BENCH_OP_QUERY | (shape << 8), where shape is the
+ * 1-based line of the query file (Q1..Q9 for bench/queries-w3.txt); 0 means unknown. */
+#define BENCH_QUERY_OP(shape) ((uint32_t)BENCH_OP_QUERY | ((uint32_t)(shape) << 8))
+
 enum bench_op {
 	BENCH_OP_CREATE = 1,	/* W1: tmp + attrs + fsync + rename + fsync dir */
 	BENCH_OP_READ = 2,	/* W2: open + read whole file */

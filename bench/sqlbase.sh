@@ -34,19 +34,27 @@ CREATE INDEX IF NOT EXISTS ix_weight ON memories(weight);
 EOF
 }
 
-# One INSERT per manifest line; the ino comes from the file created by bench/load W1.
+# One INSERT per manifest line; the ino comes from the file created by bench/load W1. One
+# find for all inode numbers and one awk pass, so the load stays linear at 60k memories.
 load_sql() {
     manifest=$1; target=$2
-    grep -v '^#' "$manifest" | while IFS="$(printf '\t')" read -r path _size _seed _dup attrs; do
-        ino=$(stat -c %i "$target/$path")
-        # raw attributes are never indexed and have no column (docs/benchmark-harness.md §4)
-        printf 'INSERT INTO memories(ino,path' ; printf '%s\n' "$attrs" | tr ' ' '\n' | awk -F'[=:]' '$2 != "r" { printf ",%s", $1 }'
-        printf ') VALUES(%s,%s' "$ino" "'$path'"
-        printf '%s\n' "$attrs" | tr ' ' '\n' | awk -F'[=:]' '$2 != "r" {
-            if ($2 == "s") printf ",%s", "\x27" $3 "\x27";
-            else printf ",%s", $3 }'
-        printf ');\n'
-    done
+    # busybox find (VM initramfs) has no -printf; stat through -exec works with GNU and busybox
+    (cd "$target" && find . -type f -exec stat -c '%i %n' {} +) | awk '{ print substr($2, 3) "\t" $1 }' | awk -F'\t' '
+        NR == FNR { ino[$1] = $2; next }
+        /^#/ { next }
+        {
+            if (!($1 in ino)) { print "sqlbase: no file for " $1 > "/dev/stderr"; exit 1 }
+            cols = "ino,path"; vals = ino[$1] ",\047" $1 "\047"
+            n = split($5, a, " ")
+            for (i = 1; i <= n; i++) {
+                eq = index(a[i], "="); name = substr(a[i], 1, eq - 1)
+                type = substr(a[i], eq + 1, 1); v = substr(a[i], eq + 3)
+                if (type == "r") continue      # raw is never indexed and has no column
+                cols = cols "," name
+                vals = vals "," (type == "s" ? "\047" v "\047" : v)
+            }
+            print "INSERT INTO memories(" cols ") VALUES(" vals ");"
+        }' - "$manifest"
 }
 
 # SQL predicate for one term. Prefix becomes a binary half-open interval; exists becomes IS NOT NULL.
@@ -81,7 +89,8 @@ query_sql() {
         shift 4
     done
     [ $# -eq 0 ] && [ -n "$where" ] || { echo "sqlbase: bad query line" >&2; return 1; }
-    echo "SELECT ino FROM memories WHERE $where ORDER BY ino;"
+    # ino and path: the same data a QUERY result carries
+    echo "SELECT ino, path FROM memories WHERE $where ORDER BY ino;"
 }
 
 cmd=${1:-}; shift || true

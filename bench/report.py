@@ -51,7 +51,9 @@ def summarize_rep(rep_dir):
             if not name.endswith(".rec"):
                 continue
             for wl, op, start, dur, _proc, result in read_records(os.path.join(sdir, name)):
-                g = groups.setdefault((wl, op), {"ok": [], "errors": 0, "min": None, "max": None})
+                g = groups.setdefault((wl, op), {"ok": [], "errors": 0, "min": None, "max": None, "results": []})
+                if result >= 0:
+                    g["results"].append(result)
                 if result < 0:
                     g["errors"] += 1
                     continue
@@ -62,7 +64,11 @@ def summarize_rep(rep_dir):
         for (wl, op), g in groups.items():
             vals = sorted(g["ok"])
             span = (g["max"] - g["min"]) / 1e9 if vals and g["max"] > g["min"] else None
-            out[(system, f"W{wl}", OPS.get(op, str(op)))] = {
+            base, shape = op & 0xFF, op >> 8
+            opname = OPS.get(base, str(base)) + (f":Q{shape}" if shape else "")
+            res = sorted(g["results"])
+            out[(system, f"W{wl}", opname)] = {
+                "results_median": percentile(res, 50) if res else None,
                 "count": len(vals),
                 "errors": g["errors"],
                 "p50_us": percentile(vals, 50),
@@ -80,7 +86,7 @@ def aggregate(reps):
     for key in keys:
         row = {"system": key[0], "workload": key[1], "op": key[2], "repetitions": 0}
         inconclusive = False
-        for metric in ("count", "errors", "p50_us", "p95_us", "p99_us", "ops_per_s"):
+        for metric in ("count", "errors", "results_median", "p50_us", "p95_us", "p99_us", "ops_per_s"):
             vals = sorted(r[key][metric] for r in reps if key in r and r[key][metric] is not None)
             row["repetitions"] = max(row["repetitions"], len(vals))
             if not vals:
@@ -88,7 +94,7 @@ def aggregate(reps):
                 continue
             med = percentile(vals, 50)
             lo, hi = percentile(vals, 5), percentile(vals, 95)
-            if metric in ("count", "errors"):
+            if metric in ("count", "errors", "results_median"):
                 med, lo, hi = int(med), int(lo), int(hi)
             row[metric] = med
             row[metric + "_p5"] = lo
@@ -111,7 +117,7 @@ def main():
     if not rows:
         sys.exit("report: no records found")
     os.makedirs(args.out, exist_ok=True)
-    fields = ["system", "workload", "op", "repetitions", "count", "errors", "p50_us", "p50_us_p5", "p50_us_p95",
+    fields = ["system", "workload", "op", "repetitions", "count", "errors", "results_median", "p50_us", "p50_us_p5", "p50_us_p95",
               "p95_us", "p95_us_p5", "p95_us_p95", "p99_us", "p99_us_p5", "p99_us_p95",
               "ops_per_s", "ops_per_s_p5", "ops_per_s_p95", "inconclusive"]
     with open(os.path.join(args.out, "results.csv"), "w", newline="") as f:
@@ -125,7 +131,8 @@ def main():
         flag = " INCONCLUSIVE" if r["inconclusive"] else ""
         p50 = f"{r['p50_us']:.1f}" if r["p50_us"] is not None else "-"
         p99 = f"{r['p99_us']:.1f}" if r["p99_us"] is not None else "-"
-        print(f"{r['system']} {r['workload']} {r['op']}: n={r['count']} err={r['errors']} p50={p50}us p99={p99}us{flag}")
+        rm = f" results={r['results_median']}" if r.get("results_median") is not None and ":Q" in r["op"] else ""
+        print(f"{r['system']} {r['workload']} {r['op']}: n={r['count']} err={r['errors']}{rm} p50={p50}us p99={p99}us{flag}")
 
 
 if __name__ == "__main__":

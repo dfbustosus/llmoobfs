@@ -10,8 +10,10 @@
  *    to <path>, fsync the parent directory (the client convention of spec-m3).
  * W2 opens and reads every memory by its path.
  * W3 issues each line of --queries (name op type value, up to 4 terms) as one
- *    MOOB_IOC_QUERY on --root (default: --target), limit 4096; result = count,
- *    or -EOVERFLOW when the answer was truncated.
+ *    MOOB_IOC_QUERY on --root (default: --target), limit 4096, --repeat times per line;
+ *    result = count, or -EOVERFLOW when the answer was truncated. Query records carry the
+ *    line number as the shape (BENCH_QUERY_OP). --uid N runs as that user, to measure the
+ *    per-result authorization of a regular caller.
  * W4 rewrites "score" and then sets and removes a "scratch" attribute per memory.
  * W5 (needs --queries and --root): processes 1..N-1 walk their share of the manifest renaming
  *    each memory away and back, then unlinking and recreating it with its attributes, while
@@ -43,12 +45,13 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
+#include <grp.h>
 #include "common.h"
 #include "../include/moobfs_attr.h"
 #include "../tools/query-common.h"
 
 static const char *manifest, *target, *out, *queries, *root, *lower;
-static int workload, nprocs = 1, repeat = 1;
+static int workload, nprocs = 1, repeat = 1, run_uid = -1;
 static FILE *recf;
 static unsigned proc_id;
 
@@ -232,14 +235,15 @@ static int w8_load_queries(void)
 
 static int w8_one_query(int fd, struct moob_query_result *res, uint64_t *rng)
 {
-	struct moob_query q = w8q[bench_next(rng) % (uint64_t)w8nq];
+	int pick = (int)(bench_next(rng) % (uint64_t)w8nq);
+	struct moob_query q = w8q[pick];
 	uint64_t t0 = now_ns();
 	int32_t result;
 
 	q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT; q.results = (__u64)(uintptr_t)res;
 	if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
 	else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
-	record(BENCH_OP_QUERY, t0, result);
+	record((int)BENCH_QUERY_OP(pick + 1), t0, result);
 	return result < 0 ? -1 : 0;
 }
 
@@ -296,7 +300,7 @@ static int w5_reader(pid_t *kids, int nkids)
 			q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT; q.results = (__u64)(uintptr_t)res;
 			if (ioctl(fd, MOOB_IOC_QUERY, &q)) { result = -errno; rc = 1; }
 			else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
-			record(BENCH_OP_QUERY, t0, result);
+			record((int)BENCH_QUERY_OP(i + 1), t0, result);
 		}
 		(void)rng;
 		for (i = 0; i < nkids; i++)
@@ -311,38 +315,31 @@ static int w5_reader(pid_t *kids, int nkids)
 
 static int w3_queries(void)
 {
-	FILE *qf = fopen(queries, "r");
-	char line[8192];
-	struct moob_query q;
 	struct moob_query_result *res;
-	int fd, nq = 0;
+	int fd, r, i, k = 0;
 
-	if (!qf) { perror(queries); return -1; }
+	/* the query file is parsed once (W8 helper); every shape runs --repeat times, in file order,
+	 * split among processes by shape index so each process always measures the same shapes */
+	if (!w8nq && (w8_load_queries() || !w8nq)) { fprintf(stderr, "load: W3 needs query lines\n"); return -1; }
 	fd = open(root ? root : target, O_RDONLY | O_DIRECTORY);
-	if (fd < 0) { perror("open root"); fclose(qf); return -1; }
+	if (fd < 0) { perror("open root"); return -1; }
 	res = calloc(MOOB_QUERY_MAX_LIMIT, sizeof *res);
-	if (!res) { close(fd); fclose(qf); return -1; }
-	while (fgets(line, sizeof line, qf)) {
-		char *argv[32], *save = NULL, *tok;
-		int argc = 0, n;
-		uint64_t t0;
-		int32_t result;
+	if (!res) { close(fd); return -1; }
+	for (r = 0; r < repeat; r++)
+		for (i = 0; i < w8nq; i++) {
+			struct moob_query q = w8q[i];
+			uint64_t t0;
+			int32_t result;
 
-		if (line[0] == '#' || line[0] == '\n') continue;
-		if ((nq++ % nprocs) != (int)proc_id) continue;
-		for (tok = strtok_r(line, " \t\n", &save); tok && argc < 32; tok = strtok_r(NULL, " \t\n", &save))
-			argv[argc++] = tok;
-		memset(&q, 0, sizeof q);
-		n = parse_terms(argc, argv, 0, q.terms);
-		if (n < 1) { fprintf(stderr, "load: bad query line %d\n", nq); continue; }
-		q.version = MOOB_UAPI_VERSION; q.nterms = (__u32)n; q.limit = MOOB_QUERY_MAX_LIMIT;
-		q.results = (__u64)(uintptr_t)res;
-		t0 = now_ns();
-		if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
-		else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
-		record(BENCH_OP_QUERY, t0, result);
-	}
-	free(res); close(fd); fclose(qf);
+			if ((k++ % nprocs) != (int)proc_id) continue;
+			q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT;
+			q.results = (__u64)(uintptr_t)res;
+			t0 = now_ns();
+			if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
+			else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
+			record((int)BENCH_QUERY_OP(i + 1), t0, result);
+		}
+	free(res); close(fd);
 	return 0;
 }
 
@@ -401,8 +398,10 @@ static int w6_mount(void)
 		if (fd < 0) { record(BENCH_OP_MOUNT, t0, -errno); rc = 1; continue; }
 		q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT; q.results = (__u64)(uintptr_t)res;
 		q.count = 0; q.truncated = 0;
+		/* W6/W7 time the mount until the index answers; an answer truncated at the UAPI
+		 * limit still proves the index is ready, so it counts as a success here */
 		if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
-		else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
+		else result = (int32_t)q.count;
 		record(BENCH_OP_MOUNT, t0, result);
 		close(fd);
 	}
@@ -422,8 +421,7 @@ static int run_proc(void)
 	uint64_t rng = 0x5eed0000ULL + proc_id;
 
 	snprintf(recname, sizeof recname, "%s.%u.rec", out, proc_id);
-	recf = fopen(recname, "wb");
-	if (!recf) { perror(recname); return 1; }
+	if (!recf && !(recf = fopen(recname, "wb"))) { perror(recname); return 1; }
 	if (workload == 3 || workload == 6 || workload == 7) {
 		int r = workload == 3 ? w3_queries() : w6_mount();
 		fclose(recf);
@@ -492,6 +490,7 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[a], "--procs")) nprocs = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--lower")) lower = argv[a + 1];
 		else if (!strcmp(argv[a], "--repeat")) repeat = atoi(argv[a + 1]);
+		else if (!strcmp(argv[a], "--uid")) run_uid = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--workload") && argv[a + 1][0] == 'W') workload = atoi(argv[a + 1] + 1);
 		else { fprintf(stderr, "load: unknown option %s\n", argv[a]); return 64; }
 	}
@@ -502,6 +501,17 @@ int main(int argc, char **argv)
 		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4|W5|W8 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n"
 				"       load --workload W6|W7 --target MOUNT --lower DIR --queries FILE --out PREFIX [--repeat N]   (root)\n");
 		return 64;
+	}
+	if (run_uid >= 0) {
+		/* the query file and the record file are opened as the invoking user (root), then
+		 * privileges are dropped, so only the QUERY itself runs with the regular credentials */
+		char recname[4096];
+
+		if (workload != 3 || nprocs != 1) { fprintf(stderr, "load: --uid is for W3 with one process\n"); return 64; }
+		if (w8_load_queries() || !w8nq) { fprintf(stderr, "load: W3 needs query lines\n"); return 1; }
+		snprintf(recname, sizeof recname, "%s.0.rec", out);
+		if (!(recf = fopen(recname, "wb"))) { perror(recname); return 1; }
+		if (setgroups(0, NULL) || setgid((gid_t)run_uid) || setuid((uid_t)run_uid)) { perror("setuid"); return 1; }
 	}
 	if (nprocs == 1 || workload == 6 || workload == 7) { proc_id = 0; return run_proc(); }
 	if (workload == 5) {
