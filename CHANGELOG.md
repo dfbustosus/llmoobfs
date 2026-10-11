@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `QUERY`: results are copied to the caller one at a time instead of through a limit-sized
+  kernel array, and the scan of the first term starts at the first candidate and stops after
+  the last one (journal 0027). UAPI unchanged. New suite block with one attribute holding
+  several types.
+
 ## v0.1.0-experimental — 2026-10-10
 
 First pre-release tag: a source snapshot of M1, M2 (phases 2a–2e), M3 phase 3b and the M4
