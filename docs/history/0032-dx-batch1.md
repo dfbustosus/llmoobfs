@@ -1,4 +1,4 @@
-# 0031 — Experiência do desenvolvedor no GitHub: plano e lote 1
+# 0032 — Experiência do desenvolvedor no GitHub: plano e lote 1
 
 Data: 2026-10-11. Branch: `community/dx-batch1` a partir de `main` (`1d23b43`). Estado: arquivos
 do lote 1 concluídos; configurações no GitHub pendentes de execução pelo mantenedor (ver
@@ -88,9 +88,15 @@ issues fixadas e a discussão de boas-vindas.
 Nota de 2026-10-11: no PR #27, o job `Lint` (com `make lint` e o `shellcheck` do apt do Ubuntu
 24.04) e o job `Tools and sanitizers` passaram na primeira execução.
 
+Nota de 2026-10-11: renumerado de 0031 para 0032 ao trazer `main` para a branch, porque o
+registro 0031 (tempo de remontagem) entrou em `main` antes. Os labels `good first issue` e
+`help wanted` e as issues fixadas (#16, #17, #5) foram aplicados pelo mantenedor; conferido com
+`gh issue list --label` e a consulta GraphQL `pinnedIssues`. A discussão de boas-vindas continua
+pendente.
+
 ## Próximo passo
 
-Abrir o pull request, observar o job `Lint` com `make lint` e, depois do merge, aplicar os
-comandos acima. Lote 2: devcontainer e Codespaces com medição de tempo e disco de `make
+Abrir o pull request, observar o job `Lint` com `make lint` e, depois do merge, publicar a
+discussão de boas-vindas. Lote 2: devcontainer e Codespaces com medição de tempo e disco de `make
 vm-test`, OpenSSF Scorecard, CodeQL, `checkpatch.pl` como aviso, labeler e mensagem de
 primeira contribuição.

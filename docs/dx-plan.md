@@ -1,7 +1,7 @@
 # Plano de experiência do desenvolvedor no GitHub
 
 Data: 2026-10-11. Estado: proposta aprovada pelo mantenedor; lote 1 em execução (registro
-[0031](history/0031-dx-batch1.md)). Complementa [`community-plan.md`](community-plan.md)
+[0032](history/0032-dx-batch1.md)). Complementa [`community-plan.md`](community-plan.md)
 (políticas, templates, CI de lint e DCO) e [`seo-geo-plan.md`](seo-geo-plan.md) (descoberta),
 que já foram executados em grande parte e não são repetidos aqui.
 

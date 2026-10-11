@@ -1,0 +1,1 @@
+kind eq string decision score gt int64 500

@@ -51,7 +51,11 @@ requires `inode_permission(MAY_READ)` on the resolved inode, so mode bits and th
 of the lower filesystem apply per result. Unauthorized results are omitted silently, and
 `count`/`truncated` refer only to visible results. This was tested with two uids, two
 namespaces, chmod and ACLs on three lower filesystems, in the Debian VM and under KASAN; no
-external audit exists.
+external audit exists. Two known limits, measured on 2026-10-11: response time grows with the
+number of matching entries the caller cannot see (about 1.15 µs each), so a caller can estimate
+how many exist; and processes confined by Landlock still see results whose files Landlock would
+not let them open (the names and attribute values are ones such a process can already list and
+read, because Landlock does not cover xattr reads).
 [`docs/spec-m3.md` §3.1; `docs/history/0020-phase-3b-query-authorization.md`]
 
 ## 7. What is the TOCTOU contract?
