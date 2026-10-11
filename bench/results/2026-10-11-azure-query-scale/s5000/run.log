@@ -1,0 +1,15 @@
+17:39:35 environment recorded in build/bench/scale-5000/environment.txt
+17:39:35 manifest: 5000 memories, profile 8; 9 query shapes
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 0
+17:39:50 A-ext4: done (query only)
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 0
+17:40:07 C-ext4: done (query only)
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 0
+17:40:25 C-ext4: done (query only)
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 0
+17:40:40 A-ext4: done (query only)
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 0
+17:40:55 A-ext4: done (query only)
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 0
+17:41:12 C-ext4: done (query only)
+17:41:13 BENCH_RUN_DONE: 3 repetitions, artifacts in build/bench/scale-5000

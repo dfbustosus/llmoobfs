@@ -1,0 +1,10 @@
+{
+  "format": {"state": "missing", "version": 0, "supported": 1},
+  "problems": [],
+  "files": 5265,
+  "typed_attributes": 36542,
+  "identities": 5000,
+  "identity_conflicts": 0,
+  "same_id_other_namespace": 0,
+  "problem_count": 0
+}

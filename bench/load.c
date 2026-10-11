@@ -398,8 +398,10 @@ static int w6_mount(void)
 		if (fd < 0) { record(BENCH_OP_MOUNT, t0, -errno); rc = 1; continue; }
 		q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT; q.results = (__u64)(uintptr_t)res;
 		q.count = 0; q.truncated = 0;
+		/* W6/W7 time the mount until the index answers; an answer truncated at the UAPI
+		 * limit still proves the index is ready, so it counts as a success here */
 		if (ioctl(fd, MOOB_IOC_QUERY, &q)) result = -errno;
-		else result = q.truncated ? -EOVERFLOW : (int32_t)q.count;
+		else result = (int32_t)q.count;
 		record(BENCH_OP_MOUNT, t0, result);
 		close(fd);
 	}
