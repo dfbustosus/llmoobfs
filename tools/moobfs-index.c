@@ -4,8 +4,13 @@
  * reads every typed attribute with the shared encoding and answers the same
  * conjunctive queries, printing "<ino>\t<path>" lines sorted by inode number.
  *
- *   moobfs-index [--uid N] <dir> <name> <op> <type> <value> [... up to 4 terms]
+ *   moobfs-index [--uid N] [--domain] <dir> <name> <op> <type> <value> [... up to 4 terms]
  * --uid N drops privileges first, so the walk sees only what that user may reach.
+ * --domain treats <dir> as a domain directory (docs/spec-query-v2.md §3): its own
+ * attributes are left out, and an entry is listed only when it passes the homogeneity
+ * rule, evaluated here independently of the kernel from mode bits, owner, group, link
+ * count and the presence of an access ACL on <dir>, every directory below it on the way,
+ * and the entry itself.
  */
 #define _GNU_SOURCE
 #include <ftw.h>
@@ -13,11 +18,61 @@
 #include <sys/stat.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <limits.h>
 #include "query-common.h"
 
 static struct moob_query_term terms[MOOB_QUERY_MAX_TERMS];
 static int nterms;
 static size_t root_len;
+static int domain_mode;
+static struct stat dom_st;
+static int dom_acl;
+
+static int has_acl(const char *path)
+{
+	return getxattr(path, "system.posix_acl_access", NULL, 0) > 0;
+}
+
+/* Everyone who can traverse the domain can read (want_read) or traverse this inode. */
+static int reach_ok(const char *path, const struct stat *st, int want_read)
+{
+	mode_t u = want_read ? S_IRUSR : S_IXUSR, g = want_read ? S_IRGRP : S_IXGRP;
+	mode_t o = want_read ? S_IROTH : S_IXOTH;
+	int acl = has_acl(path);
+
+	if (!acl && (st->st_mode & o))
+		return 1;
+	if (acl || dom_acl || st->st_uid != dom_st.st_uid || st->st_gid != dom_st.st_gid)
+		return 0;
+	if ((dom_st.st_mode & S_IXUSR) && !(st->st_mode & u))
+		return 0;
+	if ((dom_st.st_mode & S_IXGRP) && !(st->st_mode & g))
+		return 0;
+	if ((dom_st.st_mode & S_IXOTH) && !(st->st_mode & o))
+		return 0;
+	return 1;
+}
+
+static int homogeneous(const char *path, const struct stat *st)
+{
+	char buf[PATH_MAX];
+	size_t i;
+
+	if (S_ISREG(st->st_mode) && st->st_nlink > 1)
+		return 0;
+	snprintf(buf, sizeof buf, "%s", path);
+	for (i = root_len + 1; buf[i]; i++) {		/* every directory strictly between */
+		struct stat ds;
+
+		if (buf[i] != '/')
+			continue;
+		buf[i] = 0;
+		if (lstat(buf, &ds) || !reach_ok(buf, &ds, 0))
+			return 0;
+		buf[i] = '/';
+	}
+	return reach_ok(path, st, 1);
+}
 
 struct hit { uint64_t ino; char *path; };
 static struct hit *hits;
@@ -77,9 +132,10 @@ static int term_matches(const char *path, const struct moob_query_term *t)
 static int visit(const char *path, const struct stat *sb, int flag, struct FTW *ftw)
 {
 	int i;
-	(void)ftw;
 
 	if (flag != FTW_F && flag != FTW_D)
+		return 0;
+	if (domain_mode && (ftw->level == 0 || !homogeneous(path, sb)))
 		return 0;
 	for (i = 0; i < nterms; i++)
 		if (!term_matches(path, &terms[i]))
@@ -110,8 +166,12 @@ int main(int argc, char **argv)
 		if (setgid(u) || setuid(u)) { perror("setuid"); return 1; }
 		argv += 2; argc -= 2;
 	}
+	if (argc >= 2 && !strcmp(argv[1], "--domain")) {
+		domain_mode = 1;
+		argv++; argc--;
+	}
 	if (argc < 6) {
-		fprintf(stderr, "usage: moobfs-index [--uid N] <dir> <name> <op> <type> <value> [...]\n");
+		fprintf(stderr, "usage: moobfs-index [--uid N] [--domain] <dir> <name> <op> <type> <value> [...]\n");
 		return 64;
 	}
 	nterms = parse_terms(argc, argv, 2, terms);
@@ -120,6 +180,13 @@ int main(int argc, char **argv)
 		return 65;
 	}
 	root_len = strlen(argv[1]);
+	if (domain_mode) {
+		if (stat(argv[1], &dom_st)) {
+			perror(argv[1]);
+			return 1;
+		}
+		dom_acl = has_acl(argv[1]);
+	}
 	if (nftw(argv[1], visit, 32, FTW_PHYS | FTW_MOUNT)) {
 		perror("nftw");
 		return 1;

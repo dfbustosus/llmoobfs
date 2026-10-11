@@ -5,6 +5,10 @@
  *   --uid N drops privileges to uid/gid N before opening, to test isolation.
  *   query <mount> info                               prints GET_INFO fields
  *   query <mount> invalid                            checks that malformed requests are refused
+ *   query [--uid N] <domain-dir> q2 <terms...>       QUERY2 on a domain directory (paths relative to it)
+ *   query <domain-dir> q2invalid                     malformed QUERY2 requests are refused
+ *   query [--uid N] <dir> q2errno <terms...>         prints the errno of QUERY2 (0 on success)
+ *   query [--uid N] <x> rename <old> <new>           prints the errno of rename(2) (0 on success)
  *   query [--uid N] <mount> race <seconds>           repeats QUERY kind eq note while another
  *                                                    process changes modes, names and inodes;
  *                                                    every result must be well formed and
@@ -54,19 +58,90 @@ int main(int argc, char **argv)
 		printf("open %s: ok\n", argv[3]);
 		return 0;
 	}
+	if (argc >= 5 && !strcmp(argv[2], "rename")) {
+		printf("rename %d\n", rename(argv[3], argv[4]) ? errno : 0);
+		return 0;
+	}
 	if (argc < 3)
 		return 64;
 	fd = open(argv[1], O_RDONLY | O_DIRECTORY);
+	if (fd < 0 && argc >= 3 && !strcmp(argv[2], "q2errno")) {
+		printf("q2 %d\n", errno);
+		return 0;
+	}
 	if (fd < 0) { perror("open"); return 1; }
 	res = calloc(MOOB_QUERY_MAX_LIMIT, sizeof *res);
 	if (!res) return 1;
 
+	if (!strcmp(argv[2], "q2") || !strcmp(argv[2], "q2errno")) {
+		struct moob_query2 q2;
+		int n, r;
+		__u32 i;
+
+		memset(&q2, 0, sizeof q2);
+		n = parse_terms(argc, argv, 3, q2.terms);
+		if (n < 1) { fprintf(stderr, "query: invalid terms\n"); return 65; }
+		q2.version = MOOB_QUERY2_VERSION;
+		q2.nterms = (__u32)n;
+		q2.limit = MOOB_QUERY_MAX_LIMIT;
+		q2.results = (__u64)(uintptr_t)res;
+		r = ioctl(fd, MOOB_IOC_QUERY2, &q2);
+		if (!strcmp(argv[2], "q2errno")) { printf("q2 %d\n", r ? errno : 0); return 0; }
+		if (r) { perror("MOOB_IOC_QUERY2"); return 1; }
+		qsort(res, q2.count, sizeof *res, by_ino);
+		for (i = 0; i < q2.count; i++)
+			printf("%" PRIu64 "\t%s%s\n", (uint64_t)res[i].ino, res[i].path,
+			       (res[i].flags & MOOB_RES_PATH_UNKNOWN) ? "?" : "");
+		if (q2.truncated)
+			fprintf(stderr, "query: results truncated\n");
+		return 0;
+	}
+	if (!strcmp(argv[2], "q2invalid")) {
+		struct moob_query2 q2;
+		int sub;
+#define Q2BAD(stmt) do { memset(&q2, 0, sizeof q2); q2.version = MOOB_QUERY2_VERSION; q2.nterms = 1; \
+	q2.limit = 10; q2.results = (__u64)(uintptr_t)res; strcpy(q2.terms[0].name, "kind"); \
+	q2.terms[0].op = MOOB_OP_EXISTS; stmt; errno = 0; \
+	CHECK(ioctl(fd, MOOB_IOC_QUERY2, &q2) == -1 && errno == EINVAL); } while (0)
+		memset(&q2, 0, sizeof q2); q2.version = MOOB_QUERY2_VERSION; q2.nterms = 1; q2.limit = 10;
+		q2.results = (__u64)(uintptr_t)res; strcpy(q2.terms[0].name, "kind"); q2.terms[0].op = MOOB_OP_EXISTS;
+		CHECK(!ioctl(fd, MOOB_IOC_QUERY2, &q2));		/* baseline is valid */
+		Q2BAD(q2.version = 1);
+		Q2BAD(q2.version = 3);
+		Q2BAD(q2.nterms = 0);
+		Q2BAD(q2.nterms = 5);
+		Q2BAD(q2.limit = 0);
+		Q2BAD(q2.limit = MOOB_QUERY_MAX_LIMIT + 1);
+		Q2BAD(q2.flags = 1);
+		Q2BAD(strcpy(q2.order_by, "created"));
+		Q2BAD(q2.order = 1);
+		Q2BAD(q2.pad[3] = 1);
+		Q2BAD(q2.cursor[127] = 1);
+		Q2BAD(q2.reserved[3] = 1);
+		Q2BAD(q2.terms[0].reserved[0] = 1);			/* MISSING_OK is a later phase */
+		Q2BAD(strcpy(q2.terms[0].name, "Kind"));
+		/* QUERY2 answers only on a domain directory, never on a subdirectory of it */
+		{
+			char sub_path[4096];
+			snprintf(sub_path, sizeof sub_path, "%s/q2sub", argv[1]);
+			mkdir(sub_path, 0700);
+			sub = open(sub_path, O_RDONLY | O_DIRECTORY); CHECK(sub >= 0);
+			memset(&q2, 0, sizeof q2); q2.version = MOOB_QUERY2_VERSION; q2.nterms = 1; q2.limit = 10;
+			q2.results = (__u64)(uintptr_t)res; strcpy(q2.terms[0].name, "kind"); q2.terms[0].op = MOOB_OP_EXISTS;
+			errno = 0; CHECK(ioctl(sub, MOOB_IOC_QUERY2, &q2) == -1 && errno == ENOTTY);
+			close(sub); rmdir(sub_path);
+		}
+		puts("QUERY2_INVALID_REQUESTS_REFUSED");
+		return 0;
+	}
 	if (!strcmp(argv[2], "info")) {
 		struct moob_info info;
 		CHECK(!ioctl(fd, MOOB_IOC_GET_INFO, &info));
 		printf("uapi=%u format=%u name_max=%u string_max=%u raw_max=%u per_file=%u\n",
 		       info.uapi_version, info.format_version, info.attr_name_max, info.attr_string_max,
 		       info.attr_raw_max, info.attr_max_per_file);
+		printf("domain_depth=%u heterogeneous=%u fallback_domains=%u\n", info.domain_depth,
+		       info.heterogeneous, info.fallback_domains);
 		printf("lower=%s caps=%#x flags=%#x budget=%" PRIu64 " used=%" PRIu64 " entries=%u inodes=%u\n",
 		       info.lower_fs, info.caps, info.flags, (uint64_t)info.index_budget,
 		       (uint64_t)info.index_used, info.index_entries, info.index_inodes);

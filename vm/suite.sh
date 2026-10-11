@@ -20,7 +20,7 @@ mount -t moobfs_layer -o lower=/nonexistent none $LAYER && fail layer-mount-bad-
 run_lower() {
     fs=$1; dev=$2; reflink=$3
     mount -t "$fs" "$dev" $LOWER || fail "lower-mount-$fs"
-    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "layer-mount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail "layer-mount-$fs"
     grep -q 'moobfs_layer' /proc/mounts || fail "layer-proc-mounts-$fs"
     mount -t moobfs_layer -o lower=$LAYER none /mnt && fail "layer-stack-on-itself-$fs"
     $BIN/layer $LAYER $LOWER "$reflink" links || fail "layer-tests-$fs"
@@ -121,20 +121,20 @@ run_lower() {
     [ ! -s /tmp/k.txt ] || fail "query-removexattr-count-$fs"
     # remount rebuilds the index from the lower tree
     umount $LAYER || fail "q-umount-$fs"
-    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "q-remount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail "q-remount-$fs"
     same_query score ge int64 10 || fail "query-after-remount-$fs"
     [ "$(wc -l < /tmp/k.txt)" -eq 4 ] || fail "query-after-remount-count-$fs"
     same_query kind eq string decision || fail "query-after-remount-eq-$fs"
     grep -q 'r/g1$' /tmp/k.txt || fail "query-after-remount-path-$fs"
     umount $LAYER || fail "q-umount2-$fs"
-    mount -t moobfs_layer -o lower=$LOWER,noindex none $LAYER || fail "q-noindex-mount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0,noindex none $LAYER || fail "q-noindex-mount-$fs"
     $BIN/query $LAYER score ge int64 10 > /dev/null 2>&1 && fail "query-noindex-answered-$fs"
     $BIN/query $LAYER info | grep -q 'flags=0x2' || fail "query-noindex-flag-$fs"
     umount $LAYER || fail "q-umount3-$fs"
-    mount -t moobfs_layer -o lower=$LOWER,index_budget=1M none $LAYER || fail "q-budget-mount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0,index_budget=1M none $LAYER || fail "q-budget-mount-$fs"
     same_query score ge int64 10 || fail "query-budget-$fs"
     umount $LAYER || fail "q-umount4-$fs"
-    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "q-remount-final-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail "q-remount-final-$fs"
     rm -rf $LAYER/r || fail "q-cleanup-$fs"
     # isolation (M3 phase 3b): two users, two namespaces; QUERY as each user must equal the
     # oracle run as that user, and must not reveal the other namespace, not even in counts
@@ -182,7 +182,7 @@ run_lower() {
     grep -q "ns/b/m1.md" /tmp/k.txt || fail "iso-perm-not-seen-$fs"
     grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-perm-overreach-$fs"
     umount $LAYER || fail "iso-umount-$fs"
-    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "iso-remount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail "iso-remount-$fs"
     $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt || fail "iso-query-remount-$fs"
     grep -q "ns/b/m2.md" /tmp/k.txt && fail "iso-leak-remount-$fs"
     # ACLs: QUERY must agree with open() under the same uid when ACLs grant or deny
@@ -210,6 +210,95 @@ run_lower() {
     $BIN/moobfs-check $LOWER > /tmp/check.json; [ $? -eq 2 ] || fail "id-dup-not-detected-$fs"
     grep -q 'duplicate (namespace, memory_id)' /tmp/check.json || fail "id-dup-reason-$fs"
     $BIN/moobfs-attr rm $LAYER/ns/a/m2.md memory_id || fail "id-dup-rm-$fs"
+    # QUERY v2 (docs/spec-query-v2.md, phase Q2a): first-level directories are domains.
+    # The tree is built under domain_depth=0 so that no permission change happens after the
+    # domain mount; the kernel answer is compared with the oracle's independent homogeneity rule.
+    mkdir -p $LAYER/da/sub $LAYER/db $LAYER/dshared || fail "q2-mkdir-$fs"
+    for d in da db dshared da/sub; do
+        for i in 1 2 3; do
+            [ $d = da/sub ] && [ $i -gt 1 ] && continue
+            echo "q2 $d $i" > $LAYER/$d/m$i.md
+            $BIN/moobfs-attr set $LAYER/$d/m$i.md kind string note >/dev/null || fail "q2-attr-$fs"
+        done
+    done
+    chmod 0600 $LAYER/da/m*.md $LAYER/da/sub/m*.md $LAYER/db/m*.md && chmod 0644 $LAYER/dshared/m*.md || fail "q2-mode-$fs"
+    chown -R 1001:1001 $LAYER/da && chmod 0700 $LAYER/da $LAYER/da/sub || fail "q2-chown-a-$fs"
+    chown -R 1002:1002 $LAYER/db && chmod 0700 $LAYER/db || fail "q2-chown-b-$fs"
+    chmod 0755 $LAYER/dshared || fail "q2-shared-$fs"
+    umount $LAYER || fail "q2-umount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "q2-mount-$fs"
+    $BIN/query $LAYER info > /tmp/info.txt || fail "q2-info-$fs"
+    grep -q 'domain_depth=1 ' /tmp/info.txt || { cat /tmp/info.txt; fail "q2-info-depth-$fs"; }
+    grep -q 'fallback_domains=0' /tmp/info.txt || { cat /tmp/info.txt; fail "q2-info-fallback0-$fs"; }
+    f=$(sed -n 's/.* flags=\([0-9a-fx]*\) .*/\1/p' /tmp/info.txt)
+    [ $(( f & 16 )) -ne 0 ] || { cat /tmp/info.txt; fail "q2-info-flag-$fs"; }   # MOOB_FLAG_DOMAINS
+    hetero() { $BIN/query $LAYER info | sed -n 's/.*heterogeneous=\([0-9]*\).*/\1/p'; }
+    q2cmp() {   # uid domain expected-count tag
+        $BIN/query --uid $1 $LAYER/$2 q2 kind eq string note > /tmp/k.txt || fail "q2-query-$4-$fs"
+        $BIN/moobfs-index --domain $LOWER/$2 kind eq string note > /tmp/o.txt || fail "q2-oracle-$4-$fs"
+        cmp -s /tmp/k.txt /tmp/o.txt || { echo "kernel:"; cat /tmp/k.txt; echo "oracle:"; cat /tmp/o.txt; fail "q2-mismatch-$4-$fs"; }
+        [ "$(wc -l < /tmp/k.txt)" -eq $3 ] || { cat /tmp/k.txt; fail "q2-count-$4-$fs"; }
+    }
+    q2cmp 1001 da 4 own-a
+    q2cmp 1002 db 3 own-b
+    q2cmp 1001 dshared 3 shared
+    grep -q 'sub/m1.md' /tmp/k.txt && fail "q2-shared-path-$fs"
+    $BIN/query --uid 1001 $LAYER/da q2 kind eq string note | grep -q "	sub/m1.md$" || fail "q2-relative-path-$fs"
+    # isolation (test 5) and descriptors that are not domains
+    [ "$($BIN/query --uid 1001 $LAYER/db q2errno kind eq string note)" = "q2 13" ] || fail "q2-isolation-$fs"
+    [ "$($BIN/query $LAYER/da/sub q2errno kind eq string note)" = "q2 25" ] || fail "q2-enotty-sub-$fs"
+    [ "$($BIN/query $LAYER q2errno kind eq string note)" = "q2 25" ] || fail "q2-enotty-root-$fs"
+    $BIN/query $LAYER/dshared q2invalid | grep -q QUERY2_INVALID_REQUESTS_REFUSED || fail "q2-invalid-$fs"
+    # v1 is restricted to CAP_SYS_ADMIN while domains are on (spec §4.5)
+    $BIN/query --uid 1001 $LAYER kind eq string note > /tmp/k.txt 2>/dev/null && fail "q2-v1-open-to-user-$fs"
+    $BIN/query $LAYER kind eq string note > /tmp/k.txt || fail "q2-v1-root-$fs"
+    grep -q 'db/m1.md' /tmp/k.txt || fail "q2-v1-root-content-$fs"
+    # homogeneity (test 3): a stricter mode removes a file at the next call; reverting restores it
+    h0=$(hetero)
+    chmod 0640 $LAYER/dshared/m1.md || fail "q2-chmod-file-$fs"
+    q2cmp 1001 dshared 2 hetero-mode
+    grep -q 'm1.md' /tmp/k.txt && fail "q2-hetero-leak-$fs"
+    [ "$(hetero)" -eq $((h0 + 1)) ] || fail "q2-hetero-count-$fs"
+    chmod 0644 $LAYER/dshared/m1.md || fail "q2-chmod-back-$fs"
+    q2cmp 1001 dshared 3 hetero-back
+    [ "$(hetero)" -eq $h0 ] || fail "q2-hetero-count-back-$fs"
+    # an extended access ACL excludes a file unless the mode alone makes it world readable
+    $TOOLS/setfacl -m u:1002:r $LAYER/dshared/m2.md || fail "q2-acl-set-$fs"
+    q2cmp 1001 dshared 2 acl
+    $TOOLS/setfacl -b $LAYER/dshared/m2.md && chmod 0644 $LAYER/dshared/m2.md || fail "q2-acl-clear-$fs"
+    q2cmp 1001 dshared 3 acl-back
+    # hard links make a file heterogeneous (another name may sit in another domain)
+    ln $LAYER/dshared/m3.md $LAYER/dshared/l3.md || fail "q2-link-$fs"
+    q2cmp 1001 dshared 2 nlink
+    rm $LAYER/dshared/l3.md || fail "q2-unlink-$fs"
+    # back to one link the file may stay excluded (fail-safe) until its next mode change
+    chmod 0644 $LAYER/dshared/m3.md || fail "q2-chmod-relink-$fs"
+    q2cmp 1001 dshared 3 relinked
+    # a directory permission change inside a domain switches it to per-result checks
+    chmod 0600 $LAYER/da/sub || fail "q2-chmod-dir-$fs"
+    $BIN/query $LAYER info | grep -q 'fallback_domains=1' || fail "q2-fallback-$fs"
+    q2cmp 1001 da 3 fallback
+    chmod 0700 $LAYER/da/sub || fail "q2-chmod-dir-back-$fs"
+    q2cmp 1001 da 4 fallback-back
+    # renames: a directory may not leave its domain or depth (EXDEV); a file changes partition
+    [ "$($BIN/query $LAYER rename $LAYER/da/sub $LAYER/dshared/sub)" = "rename 18" ] || fail "q2-exdev-domain-$fs"
+    [ "$($BIN/query $LAYER rename $LAYER/da/sub $LAYER/sub)" = "rename 18" ] || fail "q2-exdev-depth-$fs"
+    [ "$($BIN/query $LAYER rename $LAYER/da/sub $LAYER/da/sub2)" = "rename 0" ] || fail "q2-rename-inside-$fs"
+    mv $LAYER/da/sub2 $LAYER/da/sub || fail "q2-rename-back-$fs"
+    mv $LAYER/dshared/m3.md $LAYER/da/m9.md && chown 1001:1001 $LAYER/da/m9.md && chmod 0600 $LAYER/da/m9.md || fail "q2-move-file-$fs"
+    q2cmp 1001 da 5 moved-in
+    q2cmp 1001 dshared 2 moved-out
+    # a remount rebuilds the same partitions and clears the fallback
+    umount $LAYER && mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail "q2-remount-$fs"
+    $BIN/query $LAYER info | grep -q 'fallback_domains=0' || fail "q2-fallback-cleared-$fs"
+    q2cmp 1001 da 5 remount-a
+    q2cmp 1002 db 3 remount-b
+    q2cmp 1002 dshared 2 remount-shared
+    echo "kind eq string note" > /tmp/q2q.txt
+    $BIN/bench-load --workload W3 --target $LAYER/da --root $LAYER/da --query2 1 --uid 1001 --queries /tmp/q2q.txt --repeat 3 --out /tmp/q2w3 || fail "q2-bench-w3-$fs"
+    rm -rf $LAYER/da $LAYER/db $LAYER/dshared || fail "q2-cleanup-$fs"
+    umount $LAYER && mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail "q2-restore-$fs"
+    echo "QUERY2_PASS: $fs"
     # mount contract: idmapped mounts and user-namespace mounts are refused by the VFS
     $BIN/idmap idmap $LAYER || fail "contract-idmap-$fs"
     mkdir -p /tmp/userns-mnt && $BIN/idmap userns $LOWER /tmp/userns-mnt || fail "contract-userns-$fs"
@@ -278,8 +367,8 @@ run_lower() {
         same_query $qline || fail "bench-w5-equiv-$fs"
     done < /tmp/bench-q.txt
     # W6 (cold: page cache dropped) and W7 (warm): remount and first QUERY; the layer must be mounted again afterwards
-    $BIN/bench-load --workload W6 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w6 --repeat 2 || fail "bench-w6-$fs"
-    $BIN/bench-load --workload W7 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w7 --repeat 2 || fail "bench-w7-$fs"
+    $BIN/bench-load --workload W6 --target $LAYER --lower $LOWER --mount-opts domain_depth=0 --queries /tmp/bench-q.txt --out /tmp/bench-w6 --repeat 2 || fail "bench-w6-$fs"
+    $BIN/bench-load --workload W7 --target $LAYER --lower $LOWER --mount-opts domain_depth=0 --queries /tmp/bench-q.txt --out /tmp/bench-w7 --repeat 2 || fail "bench-w7-$fs"
     [ "$(cat /tmp/bench-w6.0.rec /tmp/bench-w7.0.rec | wc -c)" -eq $(( 4 * 32 )) ] || fail "bench-mount-records-$fs"
     grep -q "moobfs_layer $LAYER\| $LAYER " /proc/mounts || fail "bench-remounted-$fs"
     $BIN/query $LAYER info | grep -q 'flags=0x0\|flags=0 ' || fail "bench-remount-flags-$fs"
@@ -298,7 +387,7 @@ run_lower() {
     rm -rf $LAYER/fsx || fail "layer-cleanup-$fs"
     sync
     umount $LAYER || fail "layer-unmount-$fs"
-    mount -t moobfs_layer -o lower=$LOWER,nolinks none $LAYER || fail "layer-remount-$fs"
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0,nolinks none $LAYER || fail "layer-remount-$fs"
     $BIN/layer $LAYER $LOWER "$reflink" nolinks || fail "layer-nolinks-tests-$fs"
     umount $LAYER || fail "layer-second-unmount-$fs"
     umount $LOWER || fail "lower-unmount-$fs"
@@ -325,7 +414,7 @@ remember() {   # remember <mount> <relative path> <kind> <score> : the client co
     sync    # a rename is durable only after the parent directory is synced; clients must fsync it
 }
 mount -t ext4 "$DEV_EXT4" $LOWER || fail acc-lower-mount
-mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail acc-layer-mount
+mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail acc-layer-mount
 # git: a repository living on the layer, with memories as tracked files
 mkdir -p $LAYER/repo && cd $LAYER/repo || fail acc-repo-dir
 git init -q . 2>/dev/null || fail acc-git-init
@@ -387,7 +476,7 @@ $TOOLS/dmsetup create lw --table "0 $(blockdev --getsz $SCRATCH) log-writes $SCR
 $TOOLS/mke2fs -q -F -t ext4 -b 4096 /dev/mapper/lw || fail lw-mkfs
 $TOOLS/dmsetup message lw 0 mark mkfs || fail lw-mark-mkfs
 mount -t ext4 /dev/mapper/lw $LOWER || fail lw-lower-mount
-mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail lw-layer-mount
+mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail lw-layer-mount
 for i in 1 2 3 4; do
     remember $LAYER "mem/m$i.md" decision $i || fail "lw-remember-$i"
     $TOOLS/dmsetup message lw 0 mark "m$i" || fail "lw-mark-$i"
@@ -402,7 +491,7 @@ check_mark() {   # replay up to a mark; memories 1..$2 must be whole, later ones
     mount -t ext4 $SCRATCH $LOWER && umount $LOWER || return 1      # journal recovery, as after a reboot
     $TOOLS/e2fsck -fn $SCRATCH > /tmp/fsck.txt 2>&1 || { cat /tmp/fsck.txt; return 1; }
     mount -t ext4 -o ro $SCRATCH $LOWER || return 1
-    mount -t moobfs_layer -o lower=$LOWER none $LAYER || return 1
+    mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || return 1
     n=0
     for i in 1 2 3 4; do
         if [ "$i" -le "$2" ]; then
@@ -430,7 +519,7 @@ $TOOLS/mke2fs -q -F -t ext4 -b 4096 $SCRATCH || fail fl-mkfs
 SZ=$(blockdev --getsz $SCRATCH)
 $TOOLS/dmsetup create fl --table "0 $SZ linear $SCRATCH 0" || fail fl-create
 mount -t ext4 /dev/mapper/fl $LOWER || fail fl-lower-mount
-mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail fl-layer-mount
+mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail fl-layer-mount
 remember $LAYER "ok.md" note 1 || fail fl-remember-ok
 sync
 $TOOLS/dmsetup suspend fl && dmsetup reload fl --table "0 $SZ flakey $SCRATCH 0 0 1 1 error_writes" && dmsetup resume fl || fail fl-reload-down
@@ -442,7 +531,7 @@ umount $LOWER 2>/dev/null || true
 $TOOLS/dmsetup remove --retry fl || fail fl-remove
 $TOOLS/e2fsck -fy $SCRATCH > /tmp/fsck.txt 2>&1; rc=$?; [ $rc -le 1 ] || { cat /tmp/fsck.txt; fail fl-fsck; }
 mount -t ext4 $SCRATCH $LOWER || fail fl-remount
-mount -t moobfs_layer -o lower=$LOWER none $LAYER || fail fl-layer-remount
+mount -t moobfs_layer -o lower=$LOWER,domain_depth=0 none $LAYER || fail fl-layer-remount
 grep -q 'memory ok.md' $LAYER/ok.md || fail fl-ok-content
 $BIN/moobfs-check $LOWER > /dev/null || fail fl-check
 umount $LAYER && umount $LOWER || fail fl-final-umount

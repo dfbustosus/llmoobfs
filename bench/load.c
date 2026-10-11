@@ -13,7 +13,8 @@
  *    MOOB_IOC_QUERY on --root (default: --target), limit 4096, --repeat times per line;
  *    result = count, or -EOVERFLOW when the answer was truncated. Query records carry the
  *    line number as the shape (BENCH_QUERY_OP). --uid N runs as that user, to measure the
- *    per-result authorization of a regular caller.
+ *    per-result authorization of a regular caller. --query2 1 issues MOOB_IOC_QUERY2 instead,
+ *    with --root naming a domain directory (docs/spec-query-v2.md).
  * W4 rewrites "score" and then sets and removes a "scratch" attribute per memory.
  * W5 (needs --queries and --root): processes 1..N-1 walk their share of the manifest renaming
  *    each memory away and back, then unlinking and recreating it with its attributes, while
@@ -26,7 +27,8 @@
  * W6/W7 (root): unmounts --target if mounted, drops the page cache for W6, mounts
  *    moobfs_layer with lower=--lower on --target and issues the first line of
  *    --queries; the record covers mount() plus that QUERY (index rebuilt at mount).
- *    --repeat N repeats the cycle; result = count of the first QUERY.
+ *    --repeat N repeats the cycle; result = count of the first QUERY. --mount-opts adds
+ *    options after lower= (the v1 QUERY needs domain_depth=0 for unprivileged use).
  * Lines are split among --procs processes by index modulo N. One record file
  * per process: <PREFIX>.<proc>.rec, 32-byte records (struct bench_rec).
  * Errors are recorded with result = -errno and never counted as latencies.
@@ -51,6 +53,8 @@
 #include "../tools/query-common.h"
 
 static const char *manifest, *target, *out, *queries, *root, *lower;
+static const char *mount_opts;
+static int use_query2;	/* W3: MOOB_IOC_QUERY2 on --root, a domain directory */	/* extra layer mount options for W6/W7, e.g. domain_depth=0 */
 static int workload, nprocs = 1, repeat = 1, run_uid = -1;
 static FILE *recf;
 static unsigned proc_id;
@@ -332,6 +336,19 @@ static int w3_queries(void)
 			int32_t result;
 
 			if ((k++ % nprocs) != (int)proc_id) continue;
+			if (use_query2) {
+				struct moob_query2 q2;
+
+				memset(&q2, 0, sizeof q2);
+				q2.version = MOOB_QUERY2_VERSION; q2.nterms = q.nterms;
+				q2.limit = MOOB_QUERY_MAX_LIMIT; q2.results = (__u64)(uintptr_t)res;
+				memcpy(q2.terms, q.terms, sizeof q2.terms);
+				t0 = now_ns();
+				if (ioctl(fd, MOOB_IOC_QUERY2, &q2)) result = -errno;
+				else result = q2.truncated ? -EOVERFLOW : (int32_t)q2.count;
+				record((int)BENCH_QUERY_OP(i + 1), t0, result);
+				continue;
+			}
 			q.version = MOOB_UAPI_VERSION; q.limit = MOOB_QUERY_MAX_LIMIT;
 			q.results = (__u64)(uintptr_t)res;
 			t0 = now_ns();
@@ -377,7 +394,11 @@ static int w6_mount(void)
 	if (first_query(&q)) return 1;
 	res = calloc(MOOB_QUERY_MAX_LIMIT, sizeof *res);
 	if (!res) return 1;
-	snprintf(opts, sizeof opts, "lower=%s", lower);
+	if (snprintf(opts, sizeof opts, "lower=%s%s%s", lower, mount_opts ? "," : "",
+		     mount_opts ? mount_opts : "") >= (int)sizeof opts) {
+		free(res);
+		return 1;
+	}
 	for (r = 0; r < repeat; r++) {
 		uint64_t t0;
 		int fd, err = 0;
@@ -489,6 +510,8 @@ int main(int argc, char **argv)
 		else if (!strcmp(argv[a], "--root")) root = argv[a + 1];
 		else if (!strcmp(argv[a], "--procs")) nprocs = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--lower")) lower = argv[a + 1];
+		else if (!strcmp(argv[a], "--mount-opts")) mount_opts = argv[a + 1];
+		else if (!strcmp(argv[a], "--query2")) use_query2 = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--repeat")) repeat = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--uid")) run_uid = atoi(argv[a + 1]);
 		else if (!strcmp(argv[a], "--workload") && argv[a + 1][0] == 'W') workload = atoi(argv[a + 1] + 1);
@@ -498,8 +521,8 @@ int main(int argc, char **argv)
 	    !(workload == 1 || workload == 2 || workload == 3 || workload == 4 || workload == 5 || workload == 6 || workload == 7 || workload == 8) ||
 	    (workload == 3 ? !queries : (workload == 6 || workload == 7) ? (!queries || !lower || repeat < 1) :
 	     workload == 5 ? (!manifest || !queries || !root || nprocs < 2) : !manifest)) {
-		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4|W5|W8 --out PREFIX [--procs N] [--queries FILE] [--root DIR]\n"
-				"       load --workload W6|W7 --target MOUNT --lower DIR --queries FILE --out PREFIX [--repeat N]   (root)\n");
+		fprintf(stderr, "usage: load --manifest FILE --target DIR --workload W1|W2|W3|W4|W5|W8 --out PREFIX [--procs N] [--queries FILE] [--root DIR] [--uid N] [--query2 1]\n"
+				"       load --workload W6|W7 --target MOUNT --lower DIR --queries FILE --out PREFIX [--repeat N] [--mount-opts OPTS]   (root)\n");
 		return 64;
 	}
 	if (run_uid >= 0) {
