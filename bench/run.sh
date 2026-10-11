@@ -71,7 +71,7 @@ for spec in $layer; do
     rest=${spec#*=}; mnt=${rest%%:*}
     for entry in "$mnt"/* "$mnt"/.[!.]*; do
         [ -e "$entry" ] || continue
-        [ "${entry##*/}" = bench ] && continue
+        case ${entry##*/} in bench|lost+found) continue ;; esac   # lost+found: fsck's directory, never typed
         echo "run.sh: $mnt must contain nothing but bench/ (found ${entry##*/})" >&2; exit 1
     done
 done

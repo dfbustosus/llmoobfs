@@ -270,3 +270,7 @@ Q9 do que o oráculo. A causa foi um conjunto de 1000 memórias deixado em
 inteira, enquanto o oráculo e o SQLite olham só `bench/`. Nenhum número foi produzido. A pasta
 foi removida e o piloto refeito; `run.sh` passou a recusar começar se a raiz de uma camada
 contiver algo além de `bench/`.
+
+A trava falhou no CI do PR 20: a suíte monta a camada sobre a raiz de um ext4 recém-formatado,
+que traz `lost+found`. A trava passou a ignorar `lost+found`, que nunca tem atributos tipados.
+`make vm-test` com a correção: `BENCH_LAYER_PASS` nos três inferiores.
