@@ -1,0 +1,200 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 24K of event 'task-clock:ppp'
+# Event count (approx.): 4974994800
+#
+# Overhead  Symbol                                         IPC   [IPC Coverage]
+# ........  .............................................  ....................
+#
+     7.74%  [k] do_query                                   -      -            
+            |          
+             --7.74%--moobl_root_ioctl
+                       __x64_sys_ioctl
+                       x64_sys_call
+                       do_syscall_64
+                       entry_SYSCALL_64_after_hwframe
+                       ioctl
+                       main
+
+     4.59%  [k] inode_permission                           -      -            
+            |          
+            |--1.95%--link_path_walk.part.0.constprop.0
+            |          |          
+            |           --1.91%--path_lookupat
+            |                     filename_lookup
+            |                     |          
+            |                      --1.91%--vfs_path_lookup
+            |                                do_query
+            |                                moobl_root_ioctl
+            |                                __x64_sys_ioctl
+            |                                x64_sys_call
+            |                                do_syscall_64
+            |                                entry_SYSCALL_64_after_hwframe
+            |                                ioctl
+            |                                main
+            |          
+             --1.88%--moobl_permission
+                       inode_permission
+                       |          
+                        --1.46%--link_path_walk.part.0.constprop.0
+                                  path_lookupat
+                                  filename_lookup
+                                  vfs_path_lookup
+                                  do_query
+                                  moobl_root_ioctl
+                                  __x64_sys_ioctl
+                                  x64_sys_call
+                                  do_syscall_64
+                                  entry_SYSCALL_64_after_hwframe
+                                  ioctl
+                                  main
+
+     3.90%  [k] moobl_d_revalidate                         -      -            
+            |          
+             --2.97%--lookup_fast
+                       walk_component
+                       |          
+                       |--1.88%--link_path_walk.part.0.constprop.0
+                       |          path_lookupat
+                       |          filename_lookup
+                       |          vfs_path_lookup
+                       |          do_query
+                       |          moobl_root_ioctl
+                       |          __x64_sys_ioctl
+                       |          x64_sys_call
+                       |          do_syscall_64
+                       |          entry_SYSCALL_64_after_hwframe
+                       |          ioctl
+                       |          main
+                       |          
+                        --1.09%--path_lookupat
+                                  filename_lookup
+                                  vfs_path_lookup
+                                  do_query
+                                  moobl_root_ioctl
+                                  __x64_sys_ioctl
+                                  x64_sys_call
+                                  do_syscall_64
+                                  entry_SYSCALL_64_after_hwframe
+                                  ioctl
+                                  main
+
+     3.18%  [k] link_path_walk.part.0.constprop.0          -      -            
+            |          
+             --3.03%--path_lookupat
+                       filename_lookup
+                       |          
+                        --3.02%--vfs_path_lookup
+                                  do_query
+                                  moobl_root_ioctl
+                                  __x64_sys_ioctl
+                                  x64_sys_call
+                                  do_syscall_64
+                                  entry_SYSCALL_64_after_hwframe
+                                  ioctl
+                                  main
+
+     2.90%  [k] dput                                       -      -            
+            |          
+             --1.75%--step_into
+                       walk_component
+                       |          
+                        --1.31%--link_path_walk.part.0.constprop.0
+                                  path_lookupat
+                                  filename_lookup
+                                  vfs_path_lookup
+                                  do_query
+                                  moobl_root_ioctl
+                                  __x64_sys_ioctl
+                                  x64_sys_call
+                                  do_syscall_64
+                                  entry_SYSCALL_64_after_hwframe
+                                  ioctl
+                                  main
+
+     2.71%  [.] by_ino                                     -      -            
+     2.68%  [k] __d_lookup                                 -      -            
+            |          
+             --2.65%--lookup_fast
+                       walk_component
+                       |          
+                       |--1.57%--link_path_walk.part.0.constprop.0
+                       |          path_lookupat
+                       |          filename_lookup
+                       |          vfs_path_lookup
+                       |          do_query
+                       |          moobl_root_ioctl
+                       |          __x64_sys_ioctl
+                       |          x64_sys_call
+                       |          do_syscall_64
+                       |          entry_SYSCALL_64_after_hwframe
+                       |          ioctl
+                       |          main
+                       |          
+                        --1.08%--path_lookupat
+                                  filename_lookup
+                                  vfs_path_lookup
+                                  do_query
+                                  moobl_root_ioctl
+                                  __x64_sys_ioctl
+                                  x64_sys_call
+                                  do_syscall_64
+                                  entry_SYSCALL_64_after_hwframe
+                                  ioctl
+                                  main
+
+     2.36%  [k] __memset                                   -      -            
+            |          
+             --1.66%--getname_kernel
+                       vfs_path_lookup
+                       do_query
+                       moobl_root_ioctl
+                       __x64_sys_ioctl
+                       x64_sys_call
+                       do_syscall_64
+                       entry_SYSCALL_64_after_hwframe
+                       ioctl
+                       main
+
+     2.18%  [k] do_user_addr_fault                         -      -            
+            |
+            ---exc_page_fault
+               asm_exc_page_fault
+
+     1.93%  [k] moobl_permission                           -      -            
+            |          
+             --1.37%--link_path_walk.part.0.constprop.0
+                       path_lookupat
+                       filename_lookup
+                       vfs_path_lookup
+                       do_query
+                       moobl_root_ioctl
+                       __x64_sys_ioctl
+                       x64_sys_call
+                       do_syscall_64
+                       entry_SYSCALL_64_after_hwframe
+                       ioctl
+                       main
+
+     1.92%  [k] lookup_fast                                -      -            
+            |          
+             --1.83%--walk_component
+                       |          
+                        --1.68%--link_path_walk.part.0.constprop.0
+                                  |          
+                                   --1.65%--path_lookupat
+                                             filename_lookup
+                                             vfs_path_lookup
+                                             do_query
+                                             moobl_root_ioctl
+                                             __x64_sys_ioctl
+                                             x64_sys_call
+                                             do_syscall_64
+                                             entry_SYSCALL_64_after_hwframe
+                                             ioctl
+                                             main
+
+     1.70%  [k] generic_permission                         -      -            

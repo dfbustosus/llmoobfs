@@ -832,11 +832,66 @@ static struct rb_node *first_after(struct moobl_ix_name *nm, const struct moobl_
 	return best;
 }
 
+/*
+ * Where the scan of the first term starts and where it can stop. Entries are ordered by
+ * (type, value, ino), so every op except EXISTS matches a contiguous run: EQ, GE, GT and
+ * PREFIX start at the first entry whose (type, value) is not below the term; LT and LE start
+ * at the first entry of the term's type. EXISTS keeps the full scan.
+ */
+static struct rb_node *seek_first(struct moobl_ix_name *nm, const struct moob_query_term *t)
+{
+	struct rb_node *n = nm->entries.rb_node, *best = NULL;
+
+	if (t->op == MOOB_OP_EXISTS)
+		return rb_first(&nm->entries);
+	while (n) {
+		struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
+		int c;
+
+		if (t->op == MOOB_OP_LT || t->op == MOOB_OP_LE)
+			c = e->type < t->type ? -1 : 0;
+		else
+			c = value_cmp(e->type, e->value, e->len, t->type, t->value, t->len);
+		if (c >= 0) {
+			best = n;
+			n = n->rb_left;
+		} else {
+			n = n->rb_right;
+		}
+	}
+	return best;
+}
+
+/* True when no entry at or after e (in tree order) can match the term. */
+static bool past_end(const struct moobl_ix_entry *e, const struct moob_query_term *t)
+{
+	int c;
+
+	if (t->op == MOOB_OP_EXISTS)
+		return false;
+	if (e->type != t->type)
+		return e->type > t->type;
+	c = value_cmp(e->type, e->value, e->len, t->type, t->value, t->len);
+	switch (t->op) {
+	case MOOB_OP_EQ:
+	case MOOB_OP_LE:
+		return c > 0;
+	case MOOB_OP_LT:
+		return c >= 0;
+	case MOOB_OP_PREFIX:
+		/* strings with a given prefix form one run starting at the prefix itself */
+		return c > 0 && !(e->len >= t->len && !memcmp(e->value, t->value, t->len));
+	default:
+		return false;
+	}
+}
+
 static long do_query(struct super_block *sb, struct file *file, void __user *arg)
 {
 	struct moobl_index *ix = IX(sb);
 	struct moob_query *q;
-	struct moob_query_result *out = NULL;
+	struct moob_query_result __user *uout;
+	struct moob_query_result *one = NULL;
 	struct moobl_candidate *cand = NULL;
 	struct moobl_resume *resume = NULL;
 	struct moob_query_result tmp;
@@ -861,11 +916,14 @@ static long do_query(struct super_block *sb, struct file *file, void __user *arg
 		if (err)
 			goto out_q;
 	}
-	out = kvcalloc(q->limit, sizeof(*out), GFP_KERNEL);
+	/* one result at a time is copied to the caller's array, so the kernel never allocates
+	 * (or zeroes) a limit-sized buffer: the cost is per result, not per requested limit */
+	uout = u64_to_user_ptr(q->results);
+	one = kmalloc(sizeof(*one), GFP_KERNEL);
 	cand = kcalloc(MOOBL_QUERY_CHUNK, sizeof(*cand), GFP_KERNEL);
 	resume = kzalloc(sizeof(*resume), GFP_KERNEL);
 	pathbuf = (char *)__get_free_page(GFP_KERNEL);
-	if (!out || !cand || !resume || !pathbuf) {
+	if (!one || !cand || !resume || !pathbuf) {
 		err = -ENOMEM;
 		goto out_buf;
 	}
@@ -877,10 +935,14 @@ static long do_query(struct super_block *sb, struct file *file, void __user *arg
 
 		down_read(&ix->lock);
 		nm = name_find(ix, q->terms[0].name);
-		n = nm ? first_after(nm, resume) : NULL;
+		n = !nm ? NULL : resume->valid ? first_after(nm, resume) : seek_first(nm, &q->terms[0]);
 		for (; n; n = rb_next(n)) {
 			struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
 
+			if (past_end(e, &q->terms[0])) {
+				n = NULL;
+				break;
+			}
 			resume->valid = true;
 			resume->type = e->type;
 			resume->len = e->len;
@@ -913,11 +975,14 @@ static long do_query(struct super_block *sb, struct file *file, void __user *arg
 					q->truncated = 1;
 					exhausted = true;
 				} else {
-					out[count].ino = cand[i].ino;
-					out[count].flags = 0;
-					out[count].path_len = (u32)strlen(cand[i].path);
-					memcpy(out[count].path, cand[i].path, out[count].path_len + 1);
-					count++;
+					memset(one, 0, sizeof(*one));
+					one->ino = cand[i].ino;
+					one->path_len = (u32)strlen(cand[i].path);
+					memcpy(one->path, cand[i].path, one->path_len + 1);
+					if (copy_to_user(&uout[count], one, sizeof(*one)))
+						err = -EFAULT;
+					else
+						count++;
 				}
 			}
 			kfree(cand[i].path);
@@ -927,9 +992,7 @@ static long do_query(struct super_block *sb, struct file *file, void __user *arg
 	if (err)
 		goto out_buf;
 	q->count = count;
-	if (count && copy_to_user(u64_to_user_ptr(q->results), out, count * sizeof(*out)))
-		err = -EFAULT;
-	else if (copy_to_user(arg, q, sizeof(*q)))
+	if (copy_to_user(arg, q, sizeof(*q)))
 		err = -EFAULT;
 out_buf:
 	if (cand)
@@ -939,7 +1002,7 @@ out_buf:
 	kfree(resume);
 	if (pathbuf)
 		free_page((unsigned long)pathbuf);
-	kvfree(out);
+	kfree(one);
 out_q:
 	kfree(q);
 	return err;

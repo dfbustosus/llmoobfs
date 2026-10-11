@@ -1,0 +1,63 @@
+14:41:39 environment recorded in build/bench/pilot4-s1/environment.txt
+14:41:39 manifest: 1000 memories, profile 8; 9 query shapes
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:41:48 A-ext4: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:41:58 B-btrfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:42:05 X-xfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:42:15 C-ext4: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:42:26 C-btrfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:42:34 C-xfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:42:46 C-ext4: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:42:57 C-btrfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:43:05 C-xfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:43:16 A-ext4: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:43:26 B-btrfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:43:34 X-xfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:43:43 A-ext4: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:43:53 B-btrfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:44:01 X-xfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:44:12 C-ext4: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:44:24 C-btrfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:44:32 C-xfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:44:43 C-ext4: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:44:55 C-btrfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:45:04 C-xfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:45:15 A-ext4: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:45:25 B-btrfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:45:33 X-xfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:45:42 A-ext4: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:45:52 B-btrfs: done
+EQUIV_PASS: 9 shapes (SQLite, oracle); SQLite SCAN plans to justify: 2
+14:46:00 X-xfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:46:11 C-ext4: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:46:23 C-btrfs: done
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 2
+14:46:31 C-xfs: done
+14:46:34 BENCH_RUN_DONE: 5 repetitions, artifacts in build/bench/pilot4-s1

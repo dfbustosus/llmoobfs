@@ -193,13 +193,45 @@ static const struct super_operations moobl_sops = {
 
 /* ---- dentries --------------------------------------------------------- */
 
+/*
+ * RCU-walk revalidation: no locks, no references, no sleeping. The answer is "valid" only
+ * in the plain case: the lower filesystem has no revalidation of its own, the lower dentry
+ * is still hashed, and the upper dentry agrees with it (positive and mapped to the same
+ * lower inode with a link, or both negative). Anything else returns -ECHILD and the VFS
+ * retries in ref-walk, which runs the full check below. Safe because moobl_dentry is
+ * freed with call_rcu and lower dentries of local filesystems are freed after a grace
+ * period, and the lower pointer is published with WRITE_ONCE in moobl_instantiate.
+ * Attributes are not copied here; getattr and the name operations refresh them.
+ */
+static int moobl_d_revalidate_rcu(struct dentry *dentry)
+{
+	struct moobl_dentry *info = READ_ONCE(dentry->d_fsdata);
+	struct dentry *lower;
+	struct inode *inode, *lower_inode;
+
+	if (!info)
+		return -ECHILD;
+	lower = READ_ONCE(info->lower.dentry);
+	if (!lower || (READ_ONCE(lower->d_flags) & DCACHE_OP_REVALIDATE) || d_unhashed(lower))
+		return -ECHILD;
+	inode = d_inode_rcu(dentry);
+	lower_inode = d_inode_rcu(lower);
+	if (inode) {
+		if (!lower_inode || moobl_lower_inode(inode) != lower_inode || !READ_ONCE(inode->i_nlink))
+			return -ECHILD;
+	} else if (lower_inode) {
+		return -ECHILD;
+	}
+	return 1;
+}
+
 static int moobl_d_revalidate(struct dentry *dentry, unsigned int flags)
 {
 	struct dentry *lower;
 	int rc = 1;
 
 	if (flags & LOOKUP_RCU)
-		return -ECHILD;
+		return moobl_d_revalidate_rcu(dentry);
 	lower = moobl_lower_dentry(dentry);
 	if (lower->d_flags & DCACHE_OP_REVALIDATE)
 		rc = lower->d_op->d_revalidate(lower, flags);
@@ -312,7 +344,9 @@ static int moobl_instantiate(struct inode *dir, struct dentry *dentry,
 	if (info->lower.dentry != lower_dentry) {
 		struct dentry *stale = info->lower.dentry;
 
-		info->lower.dentry = dget(lower_dentry);
+		/* published for RCU-walk readers (moobl_d_revalidate_rcu); the stale
+		 * dentry stays valid for them until the end of the grace period */
+		WRITE_ONCE(info->lower.dentry, dget(lower_dentry));
 		dput(stale);
 	}
 	fsstack_copy_attr_times(dir, lower_dir);

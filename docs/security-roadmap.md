@@ -35,6 +35,11 @@ Ordem sugerida por custo-benefício. Cada item tem critério de pronto verificá
 
 ### S1. Modelo de ameaça e de credenciais (ADR)
 
+> Nota de 2026-10-11 (registro 0028): a autorização por resultado do `QUERY` cobre DAC, ACLs e
+> módulos de segurança baseados em inode, mas não consulta os que decidem pelo caminho na
+> abertura (AppArmor, Landlock). Um processo confinado por eles pode ver nos resultados um
+> arquivo que não conseguiria abrir. A ADR de S1 precisa decidir se isso entra no contrato.
+
 Precedente: a discussão de `override_creds=off` no overlayfs mostrou que, sem um modelo
 escrito, revisores não conseguem dizer se o esquema de credenciais é explorável.
 
