@@ -95,8 +95,7 @@ Comandos executados nesta sessão (host macOS, Apple Silicon):
     `BENCH_SMOKE_PASS`; `make fuzz FUZZ_TIME=10` falhou por falta de
     `libclang_rt.asan-aarch64.a` e passou depois de acrescentar `libclang-rt-18-dev`; `make
     test` com ASan/UBSan (clang) OK.
-  - `make vm-test` dentro do contêiner, via docker-in-docker: em execução quando o PR foi
-    aberto; resultado nas notas abaixo.
+  - `make vm-test` dentro do contêiner, via docker-in-docker: passou (ver a nota abaixo).
 - Os workflows `scorecard.yml`, `labeler.yml` e `first-interaction.yml` não rodam neste PR
   (só em `main` ou com a definição do branch base). O `codeql.yml` e o passo de checkpatch
   rodam no próprio PR; os resultados estão nas notas abaixo.
@@ -138,6 +137,24 @@ Nenhum teste de kernel foi afetado: nada em `layer/`, `kernel/`, `vm/` ou no for
 - O `checkpatch.pl` baixado de git.kernel.org pode ser bloqueado por proteção anti-robô do
   cgit; nesse caso o script tenta o espelho no GitHub. Se os dois falharem, o passo falha como
   aviso e não bloqueia o PR.
+
+Nota de 2026-10-11: o `make vm-test` dentro do devcontainer local (docker-in-docker, Docker
+Desktop num Mac Apple Silicon com 12 CPUs e 8 GiB para a VM do Docker, imagem amd64 sob
+emulação) terminou com código 0 e os marcadores `MOOBFS_VM_PASS`, `MOOBFS_ACCEPTANCE_PASS` e
+`MOOBFS_LAYER_PASS` (guest Debian 6.12.111 em QEMU/TCG). Tempo total de `make vm-test`: 6 min
+02 s, incluindo a construção da imagem do zero no Docker interno. Espaço: imagem
+`moobfs-m1-test` com 1,29 GB (`docker system df` no Docker interno) e `build/` com 294 MB. Isso
+mostra que o devcontainer consegue rodar a suíte via docker-in-docker, mas **não são números de
+Codespaces**: outra arquitetura de host e outra máquina; a medição em Codespaces continua
+pendente.
+
+Nota de 2026-10-11: no PR #30, primeira execução, passaram `Lint`, `Tools and sanitizers`,
+`Native Linux VM` e `Analyze C (tools, common, bench)` (com o check `CodeQL`). No `Lint`, o
+passo de aviso baixou os três arquivos do `checkpatch.pl`, conferiu os hashes ("OK") e listou
+os mesmos avisos da linha de base; o job terminou verde, como previsto pelo
+`continue-on-error`. O CodeQL (CLI 2.27.2, `security-extended`) registrou a análise de
+`refs/pull/30/merge` com 0 resultados; a lista de arquivos extraídos não foi inspecionada além
+do log do build.
 
 ## Próximo passo
 
