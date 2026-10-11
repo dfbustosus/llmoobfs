@@ -1,7 +1,7 @@
 # 0028 — Perfil do `QUERY` e revalidação de dentry compatível com RCU-walk
 
-Data: 2026-10-11. Branch: `m3/rcu-revalidate`. Estado: implementado e validado na VM; medição
-no host da Azure pendente.
+Data: 2026-10-11. Branch: `m3/rcu-revalidate`. Estado: implementado, validado na VM e medido no
+host da Azure (piloto 4).
 
 ## Pergunta
 
@@ -63,7 +63,42 @@ arquivo que não conseguiria abrir. Vai para o roteiro de segurança.
 da troca de dentry) e `MOOBFS_LAYER_PASS`; teste de concorrência com cerca de 600 consultas por
 inferior, todas bem formadas. KASAN e lockdep: pelo workflow do pull request.
 
+## Medição no host da Azure (piloto 4 e perfil repetido)
+
+Módulo do commit `28f6efa` (árvore do piloto 3 mais esta mudança). Perfil repetido da forma Q7
+(`bench/results/2026-10-11-azure-profile-q7/perf-children-rcu.txt`): `__d_lookup_rcu` passou de
+0,4% para 3,3% das amostras, `__d_lookup` e `try_to_unlazy_next` sumiram, e a resolução de
+caminho caiu de 56% para 43% do tempo de `do_query`. O laço de 3000 consultas Q7 levou 4,81 s,
+estável em três rodadas.
+
+Piloto 4 (`bench/results/2026-10-11-azure-pilot4-s1/`), 30 equivalências aprovadas. Medianas no
+ext4, como root, contra o piloto 3:
+
+| Forma | Resultados | SQLite | Piloto 3 | Piloto 4 |
+| --- | --- | --- | --- | --- |
+| Q8 | 0 | 19 µs | 4,9 µs | 4,9 µs |
+| Q3 | 3 | 16 µs | 34 µs | 33 µs |
+| Q4 | 23 | 26 µs | 73 µs | 66 µs |
+| Q5 | 70 | 43 µs | 144 µs | 126 µs |
+| Q2 | 100 | 56 µs | 217 µs | 190 µs |
+| Q6 | 212 | 99 µs | 403 µs | 339 µs |
+| Q9 | 291 | 78 µs | 544 µs | 460 µs |
+| Q1 | 390 | 90 µs | 744 µs | 636 µs |
+| Q7 | 513 | 224 µs | 1049 µs | 914 µs |
+
+btrfs e XFS seguem o mesmo padrão (Q7 976 e 915 µs; Q3 33 µs; Q8 4,9 µs). W2 no ext4 foi de
+12,9 para 12,5 µs (9,3 µs sem camada); W4 sem mudança relevante.
+
+Leitura: ganho real, mas modesto. O custo por resultado caiu de cerca de 2,0 para 1,7 µs, contra
+0,2 a 0,4 µs do SQLite. O que resta da resolução de caminho é trabalho que o RCU-walk não
+elimina: montar o caminho como texto, copiá-lo de novo em `getname_kernel`, percorrer quatro
+componentes, chamar `moobl_permission`, que repete `inode_permission` no inode inferior, em cada
+componente, e a verificação final no arquivo. Para consultas que devolvem centenas de resultados,
+o `QUERY` continua de 4 a 7 vezes mais lento que o SQLite com índice composto.
+
 ## Próximo passo
 
-Medir no host da Azure com esta mudança somada às dos registros 0025 e 0027 e comparar com o
-piloto 3 e o perfil.
+Decidir, por ADR, se a autorização por resultado pode reaproveitar a decisão de cada diretório
+dentro de uma mesma consulta, em vez de resolver o caminho completo de cada resultado. Isso
+reduziria o trabalho por resultado a uma verificação no arquivo, mas muda a forma como o
+contrato da fase 3b é cumprido e precisa de testes de isolamento e concorrência próprios.
