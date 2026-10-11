@@ -7,7 +7,8 @@
 #   equiv.sh <queries-file> <db> <lower-dir> [<mount-root>]
 # Environment: BIN (directory with query and moobfs-index; default: build/host),
 # SQLBASE (default: bench/sqlbase.sh). Without <mount-root> only oracle and SQLite are compared.
-# Exit 0 when all shapes agree (SCAN plans are reported, not fatal), 1 on any mismatch or truncation.
+# Exit 0 when all shapes agree (SCAN plans and kernel answers truncated at the 4096-result UAPI
+# limit are reported, not fatal), 1 on any mismatch.
 set -u
 queries=$1; db=$2; lower=$3; mount=${4:-}
 BIN=${BIN:-build/host}
@@ -35,7 +36,11 @@ grep -v '^#' "$queries" | while read -r line; do
     if [ -n "$mount" ]; then
         # shellcheck disable=SC2086
         "$BIN/query" "$mount" $line > "$tmp/kraw" 2> "$tmp/kerr" || { echo "EQUIV_FAIL $n kernel"; continue; }
-        grep -q 'truncated' "$tmp/kerr" && { echo "equiv: query $n: kernel answer truncated"; echo "EQUIV_FAIL $n"; continue; }
+        # QUERY returns at most 4096 results (UAPI v1, no paging): a wider answer is truncated,
+        # so it cannot be compared; SQLite and the oracle were already compared above
+        if grep -q 'truncated' "$tmp/kerr"; then
+            echo "equiv: query $n ($line): kernel answer truncated at the UAPI limit; $(wc -l < "$tmp/oracle" | tr -d ' ') matches"; echo "EQUIV_TRUNCATED $n"; continue
+        fi
         cut -f1 "$tmp/kraw" | sort -n > "$tmp/kernel"
         if ! cmp -s "$tmp/kernel" "$tmp/oracle"; then
             echo "equiv: query $n ($line): kernel and oracle differ"; diff "$tmp/kernel" "$tmp/oracle" | head -5; echo "EQUIV_FAIL $n"; continue
@@ -47,9 +52,10 @@ cat "$tmp/log"
 grep -q 'EQUIV_FAIL' "$tmp/log" && rc=1
 total=$(grep -c '^equiv: query [0-9]*: [0-9]* inodes' "$tmp/log")
 scans=$(grep -c '^EQUIV_SCAN' "$tmp/log")
+truncs=$(grep -c '^EQUIV_TRUNCATED' "$tmp/log")
 rm -rf "$tmp"
 if [ "$rc" -eq 0 ]; then
     if [ -n "$mount" ]; then who="kernel, SQLite, oracle"; else who="SQLite, oracle"; fi
-    echo "EQUIV_PASS: $total shapes ($who); SQLite SCAN plans to justify: $scans"
+    echo "EQUIV_PASS: $total shapes ($who); SQLite SCAN plans to justify: $scans; kernel answers truncated at the UAPI limit: $truncs"
 fi
 exit $rc
