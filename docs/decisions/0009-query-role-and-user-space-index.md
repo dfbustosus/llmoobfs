@@ -130,18 +130,26 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 
 - **Restringir antes de calcular.** Büttcher e Clarke (FAST 2005) mostram que filtrar por
   permissão depois de consultar vaza informação por contagens e pontuações. O `QUERY` não devolve
-  contagem nem pontuação de quem o chamador não pode ler, mas o custo de cerca de 1 µs por
-  candidato inclui candidatos de outros agentes: há um canal de tempo plausível, não medido.
+  contagem nem pontuação de quem o chamador não pode ler, mas o canal de tempo foi **medido**
+  (registro 0030): cerca de 1,15 µs por candidato invisível, de 18 µs com nenhum a 28 ms com
+  20 000, com dispersão abaixo de 3%. Um agente estima quantas memórias alheias casam com um
+  predicado e testa a existência de um valor. Só uma consulta que não percorre entradas de
+  outros domínios fecha o canal: é o argumento mais forte a favor do índice particionado por
+  domínio, no kernel ou fora dele.
+- **O fluxo de mudanças já existe** (registro 0030): `fanotify` com marca de filesystem no
+  inferior e `inotify` em pastas da camada recebem todas as mudanças feitas pela camada. A
+  camada recusa marcas `fanotify` com identificadores de arquivo por não ter operações de
+  exportação.
 - **Não existe cursor de mudanças durável no Linux.** As propostas de journal de mudanças
   discutidas no LSFMM de 2018 e 2019 não viraram código. Antes de criar um, usar o `fanotify` e
   reconstruir o índice externo na montagem e em `FAN_Q_OVERFLOW`; um passo barato é expor no
   `GET_INFO` uma época de montagem e um contador monotônico de mudanças, para o consumidor saber
   que perdeu continuidade (exige especificação da UAPI).
-- **O Landlock não é consultado.** Ele não registra o gancho `inode_permission` nem o de leitura
-  de xattr; a autorização atual do `QUERY`, e qualquer autorização em lote feita do mesmo jeito,
-  ignora processos confinados pelo Landlock (inferido do código, não reproduzido).
-- **`setxattr` gera `FS_ATTRIB`** (`fsnotify_xattr` no 6.12), base para o fluxo de mudanças; falta
-  confirmar se a camada gera o evento também no inode inferior.
+- **O Landlock não é consultado** (reproduzido, registro 0030): sob Landlock o `QUERY` devolve
+  arquivos que o processo não pode abrir, mas só nomes e valores de atributos que o processo já
+  obteria listando pastas e lendo atributos, porque o Landlock não controla leitura de xattr.
+- **`setxattr` gera `FS_ATTRIB`** (`fsnotify_xattr` no 6.12), confirmado na camada e no inferior
+  (registro 0030).
 
 ## O que o M4 precisa medir para decidir
 
