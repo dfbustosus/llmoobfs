@@ -25,6 +25,7 @@ SQLBASE=$(sib sqlbase.sh); EQUIV=$(sib equiv.sh); QUERIES=$(sib queries-w3.txt);
 out=""; scale=1000; profile=8; reps=3; seed=1; procs=4
 W3_REPEAT=${W3_REPEAT:-50}       # executions of every W3 shape per repetition
 W3_UID=${W3_UID:-65534}          # regular user for the authorization measurement (nobody)
+QUERY_ONLY=${QUERY_ONLY:-0}      # 1: only W1 (to build the dataset), W3 (root and regular user) and W7
 plain=""; layer=""
 while [ $# -gt 0 ]; do
     case $1 in
@@ -51,7 +52,7 @@ log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$out/run.log"; }
     echo "memory: $(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2 " kB"}')"
     echo "kvm: $([ -e /dev/kvm ] && echo present || echo absent)  (host virtualization: $(systemd-detect-virt 2>/dev/null || echo unknown))"
     echo "sqlite: $($SQLITE --version 2>/dev/null | cut -d' ' -f1-2 || echo absent)"
-    echo "scale: $scale profile: $profile reps: $reps seed: $seed procs: $procs w3_repeat: $W3_REPEAT w3_uid: $W3_UID"
+    echo "scale: $scale profile: $profile reps: $reps seed: $seed procs: $procs w3_repeat: $W3_REPEAT w3_uid: $W3_UID query_only: $QUERY_ONLY"
     echo "systems: plain=[$plain ] layer=[$layer ]"
     echo "commit: $(git -C "$here/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
 } > "$out/environment.txt"
@@ -96,7 +97,7 @@ run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for pla
         env SQLITE="$SQLITE" SQLBASE="$SQLBASE" BIN="$BIN" sh "$EQUIV" "$out/queries.txt" "$d/base.db" "$target" > "$d/equiv.txt" || { cat "$d/equiv.txt"; return 1; }
     fi
     tail -1 "$d/equiv.txt" | tee -a "$out/run.log"
-    "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W2 --procs "$procs" --out "$d/w2"
+    [ "$QUERY_ONLY" = 1 ] || "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W2 --procs "$procs" --out "$d/w2"
     if [ -n "$mount" ]; then
         "$BIN/bench-load" --queries "$out/queries.txt" --target "$target" --root "$mount" --workload W3 --repeat "$W3_REPEAT" --out "$d/w3"
         # the same shapes as a regular user: every result goes through a real permission check;
@@ -106,6 +107,15 @@ run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for pla
     else
         # W3 on a baseline: the same shapes through the SQLite library (bench/sqlclient)
         "$BIN/bench-sqlclient" --db "$d/base.db" --sql "$out/queries.sql" --repeat "$W3_REPEAT" --out "$d/w3"
+    fi
+    if [ "$QUERY_ONLY" = 1 ]; then
+        if [ -n "$mount" ] && [ "$(id -u)" = 0 ]; then
+            "$BIN/bench-load" --workload W7 --target "$mount" --lower "$lowerroot" --queries "$out/queries.txt" --out "$d/w7" --repeat 1
+            "$BIN/query" "$mount" info > "$d/get_info.after-w7.txt" 2>&1 || true
+        fi
+        sync; diskstat "$d/diskstats.after"
+        log "$name: done (query only)"
+        return 0
     fi
     "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W4 --procs "$procs" --out "$d/w4"
     if [ -n "$mount" ]; then
