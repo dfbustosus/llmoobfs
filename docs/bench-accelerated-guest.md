@@ -38,8 +38,12 @@ Na instância, como root, na ordem:
 ```bash
 apt-get update && apt-get install -y build-essential flex bison libelf-dev libssl-dev bc dpkg-dev debhelper rsync kmod git
 git clone https://github.com/studiomoob/llmoobfs && cd llmoobfs
-sh bench/kernel-build.sh            # 6.12.112 a partir do config do Ubuntu + vm/bench.config; ~20 min
-reboot                              # uname -r deve mostrar 6.12.112-moobfs-bench
+sh bench/kernel-build.sh            # 6.12.112 a partir do config do Ubuntu + vm/bench.config; 45-60 min em 4 vCPU
+sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=saved/' /etc/default/grub && update-grub
+grep -E "menuentry '|submenu '" /boot/grub/grub.cfg | cut -d"'" -f2     # nome exato da entrada 6.12
+grub-reboot "Advanced options for Ubuntu>Ubuntu, with Linux 6.12.112-moobfs-bench"   # só o próximo boot
+shutdown -h now   # no portal: VM desalocada, desligar "inicialização segura", ligar
+uname -r          # 6.12.112-moobfs-bench; se não subir, reiniciar volta ao kernel da Azure
 lsblk                               # identificar os três discos de dados (sdc, sdd, sde ou similares)
 sh bench/host-setup.sh --ext4 /dev/sdc --btrfs /dev/sdd --xfs /dev/sde   # formata, compila, roda a suíte inteira
 ```
