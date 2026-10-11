@@ -74,6 +74,25 @@ run_lower() {
     [ "$(wc -l < /tmp/k.txt)" -eq 3 ] || fail "query-gt-count-$fs"
     same_query score lt int64 0 || fail "query-empty-$fs"
     [ ! -s /tmp/k.txt ] || fail "query-empty-count-$fs"
+    # one attribute name holding several types across files: the scan seeks to the first
+    # candidate and stops after the last one, so every op must still equal the oracle when
+    # entries of other types sit before and after the term's run in the tree
+    i=0
+    for v in "string b" "string ba" "string bz" "string c" "string a" "int64 5" "int64 -3" "int64 5" "double 1.5" "double -2.25" "bool true" "bool false" "time 100" "time 50"; do
+        i=$((i + 1)); : > $LAYER/q/m$i
+        # shellcheck disable=SC2086
+        $BIN/moobfs-attr set $LAYER/q/m$i mix $v || fail "q-mix-set-$i-$fs"
+    done
+    for t in "eq string b" "prefix string b" "prefix string bz" "prefix string x" "lt string c" "le string ba" "gt string b" "ge string bz" \
+             "eq int64 5" "lt int64 5" "le int64 5" "gt int64 -3" "ge int64 -3" "gt int64 100" "lt int64 -10" \
+             "eq double 1.5" "lt double 0" "ge double -2.25" "eq bool true" "lt bool true" "gt time 50" "le time 100" "exists - -"; do
+        # shellcheck disable=SC2086
+        same_query mix $t || fail "query-mix-$t-$fs"
+    done
+    [ "$($BIN/query $LAYER mix eq int64 5 | wc -l)" -eq 2 ] || fail "query-mix-eq-count-$fs"
+    [ "$($BIN/query $LAYER mix prefix string b | wc -l)" -eq 3 ] || fail "query-mix-prefix-count-$fs"
+    [ "$($BIN/query $LAYER mix exists - - | wc -l)" -eq 14 ] || fail "query-mix-exists-count-$fs"
+    rm -f $LAYER/q/m* || fail "q-mix-cleanup-$fs"
     same_query pinned exists - - || fail "query-exists-$fs"
     [ "$(wc -l < /tmp/k.txt)" -eq 2 ] || fail "query-exists-count-$fs"
     same_query pinned eq bool true || fail "query-bool-$fs"
