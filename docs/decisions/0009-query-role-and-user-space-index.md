@@ -168,6 +168,7 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 | Código novo no kernel | Médio (partições, UAPI v2, interseção) | Pequeno (autorização em lote) |
 | ACLs | Respeitadas, como hoje | Exigem cópia ou verificação no kernel; o GUFI não resolve |
 | Coerência com a ADR-0001 | Total | Parcial: o índice deixa de ser do filesystem |
+| Montagem com cache frio (registro 0031: 126 s com 60 000 memórias num disco P6) | Pode reconstruir por domínio, sob demanda, na primeira consulta a cada domínio | O índice SQLite já está em disco; só os eventos perdidos exigem varredura |
 
 Critério de escolha proposto: se as consultas que os clientes de memória reais fazem forem
 conjunções simples sobre um domínio (o padrão observado em ai-memory, Letta e mem0, a confirmar
