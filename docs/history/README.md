@@ -55,3 +55,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0035 — Fase Q2a: `QUERY` por domínio (UAPI v2), partições e regra de homogeneidade](0035-phase-q2a-domain-query.md)
 - [0036 — Fase Q2b: ordenação e cursor no `QUERY2`](0036-phase-q2b-order-cursor.md)
 - [0037 — Fase Q2c: interseção por avanço alternado no `QUERY2`](0037-phase-q2c-leapfrog.md)
+- [0038 — Fase Q2d: termos "ausente ou ..." e lote no `QUERY2`](0038-phase-q2d-missing-batch.md)

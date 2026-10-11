@@ -124,6 +124,24 @@ Até 8 consultas v2 sobre o mesmo domínio numa chamada, com resultados concaten
 por consulta. União e remoção de duplicatas ficam com o cliente. Cobre o "ou" entre valores
 (tags, tipos) com uma chamada.
 
+**Implementação Q2d (2026-10-11, registro 0038), diferenças e complementos.**
+
+- O lote leva um vetor de pedidos `moob_query2` completos, cada um com seu vetor de
+  resultados, `limit`, `count`, `truncated` e `cursor`, em vez de um vetor único de resultados
+  concatenados. O cliente que quiser os resultados contíguos aponta os pedidos para fatias de
+  um mesmo vetor. Motivo: cada pedido continua paginável pelo próprio cursor, sem uma regra de
+  divisão do limite entre pedidos.
+- Todos os pedidos são validados antes de qualquer execução; um pedido inválido recusa o lote
+  inteiro com `EINVAL` e nada é escrito de volta. Os pedidos rodam em ordem, cada um sob a sua
+  própria aquisição do lock do índice: o lote não é uma fotografia única.
+- `MOOB_TERM_MISSING_OK` fica no byte de marcas do termo (antes `reserved[0]`, renomeado
+  `flags`). A v1 recusa qualquer marca (`EINVAL`). `EXISTS` com a marca é recusado ("existe ou
+  ausente" casaria tudo). Um atributo presente com outro tipo, inválido ou bruto (`raw`) conta
+  como presente ou ausente conforme o índice: tipo diferente é presente e não casa; inválido e
+  bruto não são indexados e contam como ausentes.
+- Na varredura simples, o kernel conduz pelo primeiro termo sem a marca (numa cópia dos termos;
+  o resumo do cursor usa a ordem do pedido). A interseção usa só termos `EQ` sem a marca.
+
 ### 4.4 Plano de execução no kernel, sem planejador
 
 - Com `order_by`: percorre a árvore do atributo de ordenação na partição, na ordem pedida, e

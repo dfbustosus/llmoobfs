@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Phase Q2d (journal 0038): term flag `MOOB_TERM_MISSING_OK` ("missing or ...", the byte
+  formerly `reserved[0]` is now `flags`) and `MOOB_IOC_QUERY2_BATCH` (up to 8 QUERY2 requests on
+  one domain, one permission check, all validated before any runs). Operators ending in `?` in
+  `query`, `moobfs-index` and the bench query files; `query q2batch`.
 - Phase Q2c (journal 0037): `QUERY2` without `order_by` intersects two or more equality
   terms by leapfrog over their inode-ordered runs instead of scanning the first term. Test
   client `--raw` prints the kernel's order.
