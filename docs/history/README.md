@@ -47,3 +47,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0027 — `QUERY`: busca a partir do primeiro candidato e resultados copiados um a um](0027-query-fast-path.md)
 - [0028 — Perfil do `QUERY` e revalidação de dentry compatível com RCU-walk](0028-rcu-walk-revalidation.md)
 - [0029 — Série de escala do `QUERY` (1000 a 60 000 memórias)](0029-query-scale-series.md)
+- [0031 — Experiência do desenvolvedor no GitHub: plano e lote 1](0031-dx-batch1.md)

@@ -45,8 +45,12 @@ make test BUILD=build/asan CC=clang \
 `make layer` compile the two kernel modules against `KDIR` (default: the running
 kernel's headers); they are meant for the VM container, not for your host.
 
-All targets are listed in the `Makefile` (`all tools attr-tools test fuzz module
-layer vm-test`). There is no `help` or `lint` target yet.
+`make help` lists every target with one line each. `make lint` runs the same
+checks as the CI `Lint` job (shellcheck at warning severity on the tracked
+`vm/*.sh` and `scripts/*.sh`, and SPDX headers on C sources through
+`scripts/check-spdx.sh`); it needs `shellcheck` installed (`apt install
+shellcheck` or `brew install shellcheck`). The DCO check runs only in pull
+requests.
 
 ## 3. `make vm-test`: the native Linux suite
 

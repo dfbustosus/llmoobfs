@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Contributor experience (plan `docs/dx-plan.md`, journal 0031): `make help` and `make lint`
+  (the CI `Lint` job now runs `make lint`, which also covers `scripts/*.sh`); SPDX check moved
+  to `scripts/check-spdx.sh`; `.github/CODEOWNERS`; `CITATION.cff`; `good first issue` and
+  `help wanted` documented alongside the project's own labels.
 - `QUERY`: results are copied to the caller one at a time instead of through a limit-sized
   kernel array, and the scan of the first term starts at the first candidate and stops after
   the last one (journal 0027). UAPI unchanged. New suite block with one attribute holding

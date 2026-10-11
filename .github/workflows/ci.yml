@@ -45,24 +45,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends shellcheck
-      - name: shellcheck the harness scripts
-        run: |
-          set -eu
-          files=$(ls vm/*.sh build/*.sh 2>/dev/null || true)
-          [ -n "$files" ] || { echo "no shell scripts found"; exit 1; }
-          # shellcheck disable=SC2086
-          shellcheck --shell=sh --severity=warning $files   # info-level findings are tracked as issues
-      - name: SPDX license headers on C sources
-        run: |
-          set -eu
-          missing=0
-          for f in $(find layer common tools tests include -type f \( -name '*.c' -o -name '*.h' \) -not -path 'tests/third_party/*' -not -name '*.mod.c' | sort); do
-            if ! head -n 1 "$f" | grep -q 'SPDX-License-Identifier:'; then
-              echo "missing SPDX header: $f"
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ]
+      - name: shellcheck and SPDX headers (same command as locally)
+        run: make lint   # info-level shellcheck findings are tracked as issues
       - name: DCO sign-off on every commit in the pull request
         if: github.event_name == 'pull_request'
         env:
