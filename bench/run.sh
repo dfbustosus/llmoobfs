@@ -64,6 +64,15 @@ grep -v '^#' "$QUERIES" > "$out/queries.txt"
 while read -r q; do sh "$SQLBASE" sql $q; done < "$out/queries.txt" > "$out/queries.sql"   # SQL of the same shapes
 log "manifest: $scale memories, profile $profile; $(wc -l < "$out/queries.txt" | tr -d ' ') query shapes"
 
+# QUERY answers over the whole mount, while the oracle and SQLite only see <mount>/bench, so
+# anything else under a layer root would make the kernel return extra results and fail the
+# equivalence check; refuse to start instead of measuring a contaminated tree
+for spec in $layer; do
+    rest=${spec#*=}; mnt=${rest%%:*}
+    extra=$(ls -A "$mnt" | grep -vx bench || true)
+    [ -z "$extra" ] || { echo "run.sh: $mnt must contain nothing but bench/ (found: $(echo "$extra" | tr '\n' ' '))" >&2; exit 1; }
+done
+
 diskstat() { cat /proc/diskstats > "$1" 2>/dev/null || true; }
 
 run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for plain), $5 lower root ("" for plain)
