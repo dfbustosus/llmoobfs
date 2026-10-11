@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Contributor tooling, batch 2 (plan `docs/dx-plan.md`, journal 0035): `.devcontainer/`
+  (Ubuntu 24.04, docker-in-docker, host tools; not yet advertised, the Codespaces measurement
+  of `make vm-test` is pending); OpenSSF Scorecard workflow and README badge; CodeQL for the
+  user-space C (`tools/`, `common/`, `bench/`); `make checkpatch` (`checkpatch.pl --no-tree`
+  on `layer/` and `kernel/`, script pinned to `v6.12.112` and verified by SHA-256), advisory
+  in the CI `Lint` job; `area/*` labels on pull requests by path (`.github/labeler.yml`) and a
+  greeting on a person's first issue and first pull request; Dependabot for the devcontainer.
 - Contributor experience (plan `docs/dx-plan.md`, journal 0032): `make help` and `make lint`
   (the CI `Lint` job now runs `make lint`, which also covers `scripts/*.sh`); SPDX check moved
   to `scripts/check-spdx.sh`; `.github/CODEOWNERS`; `CITATION.cff`; `good first issue` and

@@ -1,7 +1,8 @@
 # Plano de experiência do desenvolvedor no GitHub
 
-Data: 2026-10-11. Estado: proposta aprovada pelo mantenedor; lote 1 em execução (registro
-[0032](history/0032-dx-batch1.md)). Complementa [`community-plan.md`](community-plan.md)
+Data: 2026-10-11. Estado: proposta aprovada pelo mantenedor; lote 1 concluído (registro
+[0032](history/0032-dx-batch1.md)); lote 2 implementado com itens pendentes (registro
+[0035](history/0035-dx-batch2.md)). Complementa [`community-plan.md`](community-plan.md)
 (políticas, templates, CI de lint e DCO) e [`seo-geo-plan.md`](seo-geo-plan.md) (descoberta),
 que já foram executados em grande parte e não são repetidos aqui.
 
@@ -61,6 +62,16 @@ YAML; nada a corrigir.
 - CodeQL para as ferramentas em C (`tools/`, `common/`, `bench/`).
 - `checkpatch.pl --no-tree` em `layer/` e `kernel/` no job `Lint`, começando como aviso.
 - Labeler por caminho (`area/*`) e mensagem de primeira contribuição.
+
+Estado em 2026-10-11 (registro [0035](history/0035-dx-batch2.md)):
+
+| Item | Estado |
+| --- | --- |
+| Devcontainer | Arquivo pronto; construído localmente com a CLI de Dev Containers (não é um Codespace). **Pendente**: medir `make vm-test` num Codespace real; até lá, sem botão no README e sem `hostRequirements` |
+| OpenSSF Scorecard | Workflow e badge prontos; só roda em `main` (push e agenda), então o primeiro resultado sai depois do merge. **Pendente (mantenedor)**: inscrição no OpenSSF Best Practices |
+| CodeQL | Workflow com build manual de `make tools attr-tools bench-tools` |
+| `checkpatch.pl` | `make checkpatch`, passo de aviso (`continue-on-error`) no job `Lint`; linha de base: 0 erros e 14 avisos em 7 arquivos |
+| Labeler e primeira contribuição | Workflows prontos; por usarem `pull_request_target`, só passam a valer depois do merge |
 
 ### Lote 3 — Vitrine
 
