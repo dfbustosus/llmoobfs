@@ -80,6 +80,14 @@ for n in 16 17 5; do gh issue pin $n -R $R; done
 A discussão de boas-vindas foi redigida fora do repositório. Publicá-la e fixá-la (a fixação
 só existe na interface web) fica com o mantenedor.
 
+Nota de 2026-10-11: o mantenedor aplicou o comando de configurações. Conferido com
+`gh api repos/studiomoob/llmoobfs`: `delete_branch_on_merge: true`, `secret_scanning` e
+`secret_scanning_push_protection` como `enabled`. Seguem pendentes os labels nas issues, as
+issues fixadas e a discussão de boas-vindas.
+
+Nota de 2026-10-11: no PR #27, o job `Lint` (com `make lint` e o `shellcheck` do apt do Ubuntu
+24.04) e o job `Tools and sanitizers` passaram na primeira execução.
+
 ## Próximo passo
 
 Abrir o pull request, observar o job `Lint` com `make lint` e, depois do merge, aplicar os
