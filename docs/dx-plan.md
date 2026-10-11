@@ -2,7 +2,8 @@
 
 Data: 2026-10-11. Estado: proposta aprovada pelo mantenedor; lote 1 concluído (registro
 [0032](history/0032-dx-batch1.md)); lote 2 implementado com itens pendentes (registro
-[0039](history/0039-dx-batch2.md)). Complementa [`community-plan.md`](community-plan.md)
+[0039](history/0039-dx-batch2.md)); lote 3 implementado, com ações do mantenedor pendentes
+(registro [0041](history/0041-dx-batch3.md)). Complementa [`community-plan.md`](community-plan.md)
 (políticas, templates, CI de lint e DCO) e [`seo-geo-plan.md`](seo-geo-plan.md) (descoberta),
 que já foram executados em grande parte e não são repetidos aqui.
 
@@ -22,7 +23,7 @@ Lacunas encontradas:
 | Tema | Achado | Evidência |
 | --- | --- | --- |
 | Descoberta de tarefas | Issues iniciais usam só `difficulty/good-first-issue`; a página `/contribute` do GitHub, a busca e agregadores (goodfirstissue.dev, up-for-grabs) usam o label exato `good first issue`; `help wanted` não é usado | `gh issue list`, `gh label list` |
-| Releases | Seis pré-releases "Benchmark evidence" aparecem antes de `v0.1.0-experimental`; nenhuma release é "Latest" | `gh release list` |
+| Releases | Seis pré-releases (sete em 2026-10-11) "Benchmark evidence" aparecem antes de `v0.1.0-experimental`; nenhuma release é "Latest" | `gh release list` |
 | Social preview | Imagem gerada pelo GitHub, sem imagem própria | `usesCustomOpenGraphImage: false` |
 | README | O banner de cautelas vem antes de qualquer demonstração; não há quickstart curto nem demo | leitura de `README.md` |
 | Discussions | Zero discussões; nenhuma issue fixada | GraphQL `discussions.totalCount` |
@@ -83,6 +84,16 @@ Estado em 2026-10-11 (registro [0039](history/0039-dx-batch2.md)):
 - Destino das evidências de benchmark: manter como pré-releases, consolidar numa única release
   de evidências ou mover para outro local. **Decisão do mantenedor**; qualquer mudança
   preserva os anexos e é registrada.
+
+Estado em 2026-10-11 (registro [0041](history/0041-dx-batch3.md)). Decisões do mantenedor:
+release única para as evidências; demonstração em texto com saída real, não GIF nem asciinema.
+
+| Item | Estado |
+| --- | --- |
+| README | Frase de abertura, demonstração real (bloco `DEMO| ` de `vm/suite.sh`, `QUERY2` por domínio, gerado por `make vm-test`), quickstart de quatro comandos, aviso experimental integral e compacto logo abaixo, com fatos de 2026-10-11; espelhado no `README.pt-BR.md` |
+| Social preview | `docs/assets/social-preview.{svg,png}` e script de renderização. **Pendente (mantenedor)**: envio em Settings → Social preview |
+| Índice de `docs/` | `docs/README.md` com idioma e descrição de cada documento. **Pendente (mantenedor)**: criar as seis issues de tradução cujos comandos estão no registro 0041 |
+| Evidências de benchmark | Release única `bench-evidence` preparada: texto e manifesto (`bench/evidence-release.md`), `scripts/bench-evidence-release.sh` (simulação testada), links atualizados, regra para novas campanhas. **Pendente (mantenedor)**: `scripts/bench-evidence-release.sh --apply`, antes do merge |
 
 ## 3. Fora do escopo
 
