@@ -171,10 +171,35 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 | Montagem com cache frio (registro 0031: 126 s com 60 000 memórias num disco P6) | Pode reconstruir por domínio, sob demanda, na primeira consulta a cada domínio | O índice SQLite já está em disco; só os eventos perdidos exigem varredura |
 
 Critério de escolha proposto: se as consultas que os clientes de memória reais fazem forem
-conjunções simples sobre um domínio (o padrão observado em ai-memory, Letta e mem0, a confirmar
-no M4 com o cliente real), E atende sem banco e sem processo extra; se precisarem de consultas
-ricas, B. As duas podem coexistir: E como interface do filesystem, B como camada opcional do
-cliente para consultas que E não cobre.
+conjunções simples sobre um domínio, E atende sem banco e sem processo extra; se precisarem de
+consultas ricas, B. As duas podem coexistir: E como interface do filesystem, B como camada
+opcional do cliente para consultas que E não cobre.
+
+**O que os clientes reais fazem** (leitura de código, `docs/research-client-query-patterns.md`:
+ai-memory, mem0, Letta, Graphiti, LangGraph e LangMem, OpenAI Agents SDK):
+
+- O escopo é quase sempre de uma a três igualdades (usuário, agente, execução, workspace) ou um
+  prefixo de namespace, imposto pela aplicação. É exatamente o domínio da alternativa E; o
+  Graphiti sobre FalkorDB já usa um grafo por grupo e faz uma busca por grupo, a forma de E.
+- O segundo filtro é tempo: intervalos de criação e validade, muitas vezes "ausente ou maior que"
+  (`expires_at IS NULL OR > agora`), que a linguagem atual não expressa sem um valor sentinela.
+- Toda listagem ordena por tempo com limite pequeno (padrões de 3 a 50, máximos de 100 a 200).
+  Com a partição por domínio, "os N mais recentes do domínio" vira percorrer de trás para frente
+  a árvore do atributo de tempo daquela partição: barato e natural em E, sem planejador.
+- "Ou" entre valores aparece em 4 de 6 sistemas (papéis, tags, tipos, grupos); em E exige uma
+  consulta por valor e união no cliente, ou um `QUERY_BATCH`.
+- Contagens só aparecem para paginação e administração, não na recuperação.
+- O filtro estruturado roda sempre dentro do mesmo motor que ordena por similaridade vetorial ou
+  textual. Nem E nem B substituem esse motor: o índice do filesystem só serve ao cliente como
+  pré-filtro de candidatos ou como fonte de verdade da qual o índice vetorial deriva, e o valor
+  principal para esses clientes é o isolamento por permissões, não a velocidade de consulta.
+- O ai-memory já é a forma B (markdown como fonte de verdade e SQLite derivado) e precisou
+  escrever a autorização dentro do SQL, válida só para leituras pelo servidor dele.
+
+Leitura: E cobre o escopo e a ordenação por tempo com limite dentro do domínio; não cobre "ou"
+sem várias consultas nem a validade "ausente ou maior que". Essas duas lacunas são pequenas e
+específicas (consulta em lote; operador de "ausente ou comparação"), bem menores que um
+planejador.
 
 ## O que a pesquisa acrescenta
 
