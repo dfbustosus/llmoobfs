@@ -63,3 +63,12 @@ marcadores anteriores até `MOOBFS_LAYER_PASS`. A suíte passou na primeira exec
 
 PR da Q2b depois do merge da Q2a. No host de medição: o teste do canal de tempo, o W3 por
 domínio e "N mais recentes". Depois, fase Q2c (interseção por leapfrog).
+
+## Atualização (2026-10-11)
+
+O job `Lint` do pull request 32 falhou: o shellcheck (SC2209) leu a atribuição literal
+`t=time` da suíte como atribuição da saída de um comando. Corrigido com aspas no commit
+`vm: quote a literal assignment...`; o shellcheck 0.10.0 com `--severity=warning` passou
+localmente nos scripts de `vm/` e `scripts/` antes do novo push. O `make lint` local não roda
+dentro do contêiner a partir de uma worktree, porque `git ls-files` não encontra o repositório;
+os arquivos foram passados diretamente.
