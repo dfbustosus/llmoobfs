@@ -171,3 +171,18 @@ kernel mais novo como padrão, então o 6.12 precisa de `grub-reboot` (um boot s
 automática ao 6.17 se falhar). Corrigidos o sufixo e o pacote; o `grub-reboot` está no roteiro.
 A instância usa Trusted launch com Secure Boot ligado, que precisa ser desligado para o kernel
 não assinado. O kernel já instalado na instância mantém o sufixo duplicado; não é recompilado.
+
+## Portão no host da Azure: `HOST_SETUP_PASS` (2026-10-11)
+
+VM Standard_D4as_v4 (4 vCPU AMD EPYC 7763, 16 GB), Ubuntu 24.04, kernel
+`6.12.112-moobfs-bench-moobfs-bench` compilado por `bench/kernel-build.sh`, Secure Boot
+desligado, três discos de dados Premium SSD P6 de 64 GB com cache "Nenhum", endereçados por
+`/dev/disk/azure/scsi1/lun0..2` (os nomes `sdX` mudaram entre boots e não são usados).
+`sh bench/host-setup.sh --ext4 .../lun0 --btrfs .../lun1 --xfs .../lun2` terminou com
+`HOST_SETUP_PASS`: `ISOLATION_PASS`, `BENCH_LAYER_PASS` com `EQUIV_PASS` nos três inferiores,
+`LAYER_LOWER_PASS`, `SQLITE_VARIANTS` sem perdas, `POWER_LOSS_REPLAY_PASS`,
+`IO_ERROR_INJECTION_PASS`, `MOOBFS_ACCEPTANCE_PASS`, `MOOBFS_LAYER_PASS`, sem diagnóstico no
+`dmesg`. É o segundo ambiente em que a suíte inteira passa e o primeiro com aceleração de
+hardware. O teste de concorrência fez 12936 consultas em 5 s, contra cerca de 620 na VM
+emulada; é contagem de um teste de correção, não medida, e só ilustra por que tempos sob TCG
+não servem. O kernel ficou como padrão do GRUB (`grub-set-default`).
