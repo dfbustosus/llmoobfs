@@ -186,3 +186,11 @@ desligado, três discos de dados Premium SSD P6 de 64 GB com cache "Nenhum", end
 hardware. O teste de concorrência fez 12936 consultas em 5 s, contra cerca de 620 na VM
 emulada; é contagem de um teste de correção, não medida, e só ilustra por que tempos sob TCG
 não servem. O kernel ficou como padrão do GRUB (`grub-set-default`).
+
+Calibração inicial no host da Azure (P6 com bursting, 2026-10-11), escrita de 4 KiB seguida de
+`fsync`, 30 s: ext4 313/s, btrfs 229/s, xfs 418/s (de 2,4 a 4,4 ms por operação). O comando
+usado imprimiu a latência de conclusão da escrita (cerca de 10 µs), que com `--fsync=1` não
+inclui o `fsync`; `bench/calibrate.sh` passa a extrair a latência do `fsync` do JSON do `fio`.
+Decisão: a campanha que alimenta o relatório usa discos Premium SSD v2 com IOPS e vazão fixos,
+porque o bursting por créditos dos P1–P20 mudaria a velocidade do dispositivo ao longo de horas;
+os P6 atuais valem para o portão e o piloto.

@@ -30,8 +30,15 @@ deve dizer "arm64 virtualizado, fora da matriz".
 Criação (portal da Azure): imagem Ubuntu Server 24.04 LTS x64 Gen2; tamanho
 `Standard_D4as_v5` (4 vCPU, 16 GB) ou `D4s_v5`; **tipo de segurança Standard**, não Trusted
 launch, porque o kernel compilado não é assinado e o Secure Boot o recusaria; chave SSH; só a
-porta 22; disco do SO Premium SSD 64 GB; **três discos de dados idênticos** (Premium SSD P6,
-64 GB, cache None) para ext4, btrfs e XFS; sem série B (burstable); desligamento automático.
+porta 22; disco do SO Premium SSD 64 GB; **três discos de dados idênticos** para ext4, btrfs e
+XFS, com cache "Nenhum"; sem série B (burstable); desligamento automático.
+
+Discos para a campanha: **Premium SSD v2** com IOPS e vazão fixos e iguais nos três. Os Premium
+SSD de P1 a P20 têm bursting por créditos ligado por padrão (o P6 garante 240 IOPS e sobe até
+3500 enquanto há créditos, que se esgotam em cerca de 30 minutos de carga), então a velocidade
+do dispositivo mudaria no meio de uma campanha de horas e a diferença seria atribuída ao sistema
+medido. P30 e acima não têm bursting por créditos, mas são grandes e caros para este uso. Discos
+P6 com bursting servem para o portão `HOST_SETUP_PASS` e para o piloto, nunca para o relatório.
 
 Na instância, como root, na ordem:
 
@@ -116,9 +123,12 @@ usa 4 KiB em Debian arm64; 16 KiB mudaria limites de xattr do ext4), e `/tools` 
 
 ## 5. Calibrar o disco
 
-`fio --name=cal --filename=/mnt/moob-lower/cal --size=256M --rw=randwrite --bs=4k --fsync=1
---runtime=30 --time_based` em cada inferior, antes das cargas, para saber a latência de fsync
-do dispositivo virtual. O resultado entra em `environment.txt` da campanha.
+`sh bench/calibrate.sh --out <dir da campanha> ext4=/srv/moob/ext4 btrfs=/srv/moob/btrfs
+xfs=/srv/moob/xfs`: 30 s de escritas aleatórias de 4 KiB, cada uma seguida de `fsync`, por
+inferior; imprime operações por segundo e a latência do próprio `fsync` (p50, p99) e guarda o
+JSON do `fio`. A latência de conclusão da escrita (`clat`) não serve para isso: com `--fsync=1`
+ela mede só a escrita no cache de página (cerca de 10 µs no host da Azure). O resumo entra no
+relatório junto com o `environment.txt`.
 
 ## 6. Executar a campanha
 
