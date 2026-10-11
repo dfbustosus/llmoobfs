@@ -157,6 +157,21 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 | DuckDB | Consultas analíticas em colunas | Pensado para agregação, não para buscas pontuais de baixa latência |
 | Xapian, Tantivy | Busca textual | Outro problema; fica com o cliente (ADR-0005, item 5) |
 
+### Correção à alternativa E vinda da literatura
+
+A unidade de partição que fecha o canal de tempo é **o conjunto de quem pode ler**, não um
+diretório. Singh, Srivatsa e Liu (ICWS 2007) particionam arquivos pelo conjunto de leitores e
+provam que é o mínimo necessário; num sistema real de 339 466 arquivos, 926 usuários e 1203
+grupos, isso deu 2132 partições, e cada usuário consultou em média 6,31. O Lethe (Transactions on
+Data Privacy, 2015) achou 1475 conjuntos distintos de permissão em 50 000 documentos. Se um
+namespace contiver arquivos com leitores diferentes, o canal de tempo volta dentro da partição.
+Portanto E precisa de uma de duas regras: partição por (namespace, conjunto de leitores), ou
+namespaces declarados homogêneos (todo arquivo com os mesmos leitores do diretório do namespace),
+com a camada recusando ou sinalizando o que violar isso. A segunda é mais simples e combina com o
+padrão dos clientes reais (um dono por escopo). Outra redução conhecida: um índice separado para
+o que todos podem ler (o Goods, do Google, indexa só os conjuntos de dados legíveis por todos os
+engenheiros) e partições só para o que é privado.
+
 ## Comparação entre B e E
 
 | Critério | E: índice particionado no kernel | B: SQLite em espaço de usuário |
@@ -226,6 +241,25 @@ planejador.
   obteria listando pastas e lendo atributos, porque o Landlock não controla leitura de xattr.
 - **`setxattr` gera `FS_ATTRIB`** (`fsnotify_xattr` no 6.12), confirmado na camada e no inferior
   (registro 0030).
+
+### O que a varredura acadêmica acrescenta (`docs/research-academic-survey.md`)
+
+- Nenhum trabalho publicado põe um índice de atributos dentro do kernel Linux com autorização
+  POSIX por resultado, e nenhum mede um canal de tempo como o do registro 0030. A única interface
+  de busca no kernel Linux encontrada é um relatório técnico de Notre Dame (2013), sem índice.
+- Vazar contagens é prática aceita na indústria: Wang et al. (IEEE S&P 2017) extraíram termos e
+  contagens de documentos de outros clientes no GitHub e no Xen.do; a documentação atual do
+  Elasticsearch admite que usuários contam documentos que não podem ler. Só a busca que não passa
+  por outros domínios fecha o canal.
+- O custo por resultado pode cair sem particionar: o SPMeta (ICDE 2026) guarda por diretório um
+  bit por classe (dono, grupo, outros) dizendo se ela alcança o diretório, invalidado no `chmod`,
+  com ganho de 1,44 a 2,86 vezes; não trata ACLs. É complemento, não substituto, da partição.
+- B herda o problema do "novo inimigo" descrito no Zanzibar (USENIX ATC 2019): entre um `chmod` e
+  o índice externo se atualizar, o índice pode entregar nomes e atributos a quem acabou de perder
+  acesso. Se B for adiante, o cliente precisa comparar um contador monotônico de mudanças antes
+  de usar o índice, e a autorização em lote deve recusar quando o índice estiver atrasado.
+- Medições de autorização em lote existem: Bailey, Hawking e Matson (CIKM 2006) mediram 0,11 ms
+  por verificação local e recomendam verificação por coleção e lotes de 100 a 1000.
 
 ## O que o M4 precisa medir para decidir
 
