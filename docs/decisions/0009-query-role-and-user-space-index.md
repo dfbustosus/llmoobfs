@@ -1,7 +1,31 @@
 # ADR-0009 — Papel do `QUERY` e índice estruturado em espaço de usuário
 
-Data: 2026-10-11. Estado: **proposta**, sem implementação. Alternativa E acrescentada a pedido do
-mantenedor no mesmo dia. Se aceita, substitui em parte a
+Data: 2026-10-11. Estado: **aceita pelo mantenedor em 2026-10-11: alternativa E, com os ajustes
+listados em "Decisão"**. Alternativa E acrescentada a pedido do mantenedor no mesmo dia; a seção
+"Proposta" descreve a alternativa B, que fica rejeitada como direção do filesystem e permitida
+como camada opcional de um cliente. Nada implementado; a especificação está em
+`docs/spec-query-v2.md`.
+
+## Decisão
+
+Adota-se a alternativa E: o índice continua no kernel e passa a ser particionado por domínio de
+permissão, sem motor de banco de dados. Ajustes aceitos junto:
+
+1. **Domínio = namespace homogêneo.** Cada domínio é um diretório de namespace; todo arquivo
+   indexado num domínio tem o mesmo conjunto de leitores que o diretório do domínio. A camada não
+   indexa (e assinala) o que violar a regra, em vez de partir por conjunto de leitores.
+2. **`QUERY` sobre o diretório do domínio**, numa nova versão da UAPI: o kernel autoriza uma vez a
+   travessia até o domínio com as credenciais do chamador e procura só na partição dele.
+3. **"Os N mais recentes"**: ordenação por um atributo de tempo com limite, percorrendo a árvore
+   desse atributo na partição.
+4. **Interseção pequena** de duas ou mais condições de igualdade, sem planejador.
+5. **Duas extensões pequenas**: consulta em lote (várias conjunções numa chamada, para o "ou"
+   entre valores) e o operador "ausente ou comparação" (validade e expiração).
+
+O que muda em decisões anteriores: o item 2 da ADR-0007 continua (a camada fornece índice e
+`QUERY`), com o `QUERY` redefinido como consulta por domínio; o item 3 da ADR-0005 continua (índice
+mantido pelo módulo), agora particionado. A ADR-0008 continua em espera: a partição reduz o
+problema que ela atacava. A ADR-0001 não muda. Se aceita, substitui em parte a
 ADR-0005 (item 3, índices mantidos pelo módulo, e a alternativa "SQLite ao lado" que ela
 rejeitou) e redefine o `QUERY` dentro do item 2 da ADR-0007. A ADR-0001 (filesystem nativo
 montável) continua valendo.

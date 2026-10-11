@@ -47,3 +47,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0027 — `QUERY`: busca a partir do primeiro candidato e resultados copiados um a um](0027-query-fast-path.md)
 - [0028 — Perfil do `QUERY` e revalidação de dentry compatível com RCU-walk](0028-rcu-walk-revalidation.md)
 - [0033 — Pesquisas para a decisão sobre o papel do `QUERY` (ADR-0009)](0033-query-design-research.md)
+- [0034 — ADR-0009 aceita: `QUERY` por domínio no kernel (alternativa E)](0034-adr-0009-accepted.md)

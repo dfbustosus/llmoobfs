@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ADR-0009 accepted (alternative E): the attribute index stays in the kernel, partitioned by
+  permission domain; `docs/spec-query-v2.md` proposes the domain-scoped QUERY (UAPI v2). Research
+  behind the decision: `docs/research-metadata-search.md` and addendum,
+  `docs/research-academic-survey.md`, `docs/research-client-query-patterns.md`.
 - `QUERY`: results are copied to the caller one at a time instead of through a limit-sized
   kernel array, and the scan of the first term starts at the first candidate and stops after
   the last one (journal 0027). UAPI unchanged. New suite block with one attribute holding
