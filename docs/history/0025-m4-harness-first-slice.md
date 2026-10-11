@@ -215,3 +215,50 @@ usuário comum, `--uid 65534`, registrado como sistema `<nome>+u`, para separar 
 autorização por resultado, como o plano pede). A forma Q8 deixa de ser removida nos perfis sem
 `tag1`, para que a numeração fique estável; nesses perfis ela não casa nada em nenhum sistema.
 Validado com `make bench-smoke` em contêiner e `make vm-test` (`BENCH_LAYER_PASS` nos três).
+
+## Piloto 2 com o harness corrigido (2026-10-11)
+
+Execução remota pela chave dedicada `moobfs-bench-claude` (revogável no `authorized_keys` do
+host). Calibração com `bench/calibrate.sh`: `fsync` p50/p99 de 2,8/7,8 ms no ext4, 3,6/12,3 ms
+no btrfs e 2,1/6,8 ms no XFS (P6 com bursting). Piloto: 1000 memórias, perfil 8, 5 repetições,
+W3 com 50 execuções por forma, seis sistemas mais os três `+u`. Evidências em
+`bench/results/2026-10-11-azure-pilot2-s1/`; pacote bruto na pre-release
+`bench-2026-10-11-azure-pilot2-s1`. As 30 equivalências passaram.
+
+Medianas no par ext4 (sem camada / com camada): W1 9,90 / 9,82 ms; W2 9,3 / 12,9 µs; W4 set
+10,0 / 24,2 µs; W4 remoção 16,0 / 43,6 µs; W6 e W7 (só camada) 35 e 17 ms para 1000 memórias.
+
+W3 por forma (mediana, ext4; o padrão é igual em btrfs e XFS):
+
+| Forma | Resultados | SQLite | `QUERY` root | `QUERY` usuário comum |
+| --- | --- | --- | --- | --- |
+| Q8 (nenhum casamento) | 0 | 19 µs | 54 µs | 54 µs |
+| Q3 `namespace = AND agent =` | 3 | 16 µs | 141 µs | 142 µs |
+| Q4 | 23 | 26 µs | 178 µs | 180 µs |
+| Q5 | 70 | 43 µs | 248 µs | 254 µs |
+| Q2 | 100 | 56 µs | 323 µs | 328 µs |
+| Q6 `kind prefix` | 212 | 99 µs | 502 µs | 517 µs |
+| Q9 `weight exists` | 291 | 78 µs | 608 µs | 630 µs |
+| Q1 `kind =` | 390 | 91 µs | 843 µs | 874 µs |
+| Q7 `score` entre 250 e 750 | 513 | 225 µs | 1136 µs | 1177 µs |
+
+Leitura do código (`layer/index.c`, `do_query`) que explica a diferença:
+
+1. Custo fixo de cerca de 50 µs por chamada, visível em Q8: `kvcalloc(q->limit, ...)` aloca e
+   zera um vetor de resultados do tamanho do limite pedido (4096 × 280 bytes, cerca de 1,1 MB)
+   em toda chamada, mesmo quando nenhum resultado volta.
+2. Varredura linear do primeiro termo: sem chave de retomada, `first_after` começa em
+   `rb_first` e percorre todas as entradas do atributo, mesmo em igualdade, intervalo ou
+   prefixo, em que a árvore permitiria saltar ao primeiro valor candidato e parar depois do
+   último. Em Q3 isso custa cerca de 85 µs para 1000 entradas.
+3. Cerca de 2 µs por resultado devolvido, contra cerca de 0,4 µs no SQLite: para cada resultado
+   a camada copia o caminho, resolve-o com `vfs_path_lookup` sob as credenciais do chamador e
+   verifica a permissão (fase 3b). Como usuário comum o custo sobe só 3%: o peso está na
+   resolução do caminho, não na decisão de permissão.
+
+Decisão: 1 e 2 são ineficiências de implementação e serão corrigidas antes da campanha, com os
+mesmos testes de equivalência, isolamento e KASAN; 3 é consequência do desenho de autorização
+por resultado e fica como custo declarado, a ser medido de novo depois das correções. O SQLite
+do baseline prepara a instrução a cada chamada, o que o torna um pouco mais lento do que uma
+aplicação que reutiliza instruções preparadas; a comparação, portanto, não favorece o SQLite.
+Os pilotos 1 e 2 ficam como registro do estado anterior às correções.
