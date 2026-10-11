@@ -35,6 +35,12 @@ Ordem sugerida por custo-benefício. Cada item tem critério de pronto verificá
 
 ### S1. Modelo de ameaça e de credenciais (ADR)
 
+> Nota de 2026-10-11 (registro 0030), medida no host da Azure: o tempo do `QUERY` cresce cerca
+> de 1,15 µs por entrada de outro dono que casa com a consulta (18 µs com nenhuma, 28 ms com
+> 20 000), com variação abaixo de 3%. Um agente consegue estimar quantas memórias alheias têm um
+> valor de atributo e testar se um valor existe em qualquer lugar. A ADR de S1 precisa decidir o
+> modelo; a mitigação estrutural é não percorrer entradas de outros domínios (ADR-0009).
+
 > Nota de 2026-10-11 (registro 0028): a autorização por resultado do `QUERY` cobre DAC, ACLs e
 > módulos de segurança baseados em inode, mas não consulta os que decidem pelo caminho na
 > abertura (AppArmor, Landlock). Um processo confinado por eles pode ver nos resultados um
