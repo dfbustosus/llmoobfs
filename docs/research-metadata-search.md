@@ -1,5 +1,15 @@
 # Busca por metadados de arquivos, autorização e fluxo de mudanças: estado da arte para a ADR-0009
 
+
+> **Nota de correção, 2026-10-11.** O adendo [`research-metadata-search-addendum.md`](research-metadata-search-addendum.md)
+> verificou em fontes primárias vários itens deste documento e corrige cinco pontos: o GUFI não
+> replica ACLs (copia só modo, uid e gid) e é atualizado por varredura completa periódica (a cada
+> 4 horas no LANL), não por fluxo de eventos; o GNOME Tracker/LocalSearch usa `fanotify` sem
+> privilégio, com `inotify` como alternativa, e um índice por usuário; ler e limpar changelogs do
+> Lustre exige root; o Windows Search documenta índice único por máquina com corte por ACL na
+> consulta; e o `fanotify` sem privilégio em user namespaces (6.16) exige `CAP_SYS_ADMIN` também
+> no user namespace do filesystem. Onde este documento disser o contrário, vale o adendo.
+
 ## Abstract (English)
 
 This survey reviews prior work relevant to ADR-0009 (freeze the in-kernel `QUERY`, move structured

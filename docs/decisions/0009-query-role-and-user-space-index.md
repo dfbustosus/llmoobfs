@@ -80,14 +80,29 @@ de proteger os metadados, só o conteúdo. As saídas conhecidas são:
 
 A proposta não escolhe entre elas; o M4 mede as que forem viáveis.
 
-Precedente encontrado na pesquisa (`docs/research-metadata-search.md`): o GUFI (Grand Unified
-File Index, Los Alamos, BSD-3, ativo) guarda um banco SQLite por diretório, com o dono e o modo
-do diretório de origem; cada usuário consulta com as próprias credenciais e o kernel recusa abrir
-os bancos que ele não poderia ler. Atributos estendidos que nem todo leitor do diretório pode ver
-vão para bancos separados por uid e por gid. Aplicado aqui: um índice por namespace, com as
-permissões do diretório do namespace, escrito por um indexador privilegiado alimentado pelo
-`fanotify` que nunca responde consultas; cada agente lê só os índices que poderia ler. Pendências:
-cópia de ACLs, montagens com idmap e a janela entre um `chmod` e o índice refletir a mudança.
+Precedentes encontrados na pesquisa (`docs/research-metadata-search.md` e o adendo
+`docs/research-metadata-search-addendum.md`):
+
+- **GUFI** (Los Alamos, BSD-3, ativo): um banco SQLite por diretório, com dono e modo do diretório
+  de origem; a ferramenta de consulta roda com o uid real do usuário num servidor dedicado (acesso
+  por ssh a um shell restrito) e o kernel recusa abrir o que ele não pode ler, sem filtro
+  privilegiado. Atributos que nem todo leitor pode ver vão para bancos por uid e por gid. Limites
+  verificados: não replica ACLs, e a atualização é por varredura completa periódica (a cada 4
+  horas no LANL), não por eventos. Em 2026 o LANL apresentou o mesmo modelo para recuperação de
+  contexto de IA com controle de acesso ("Access Controlled AI Context with GUFI").
+- **Windows Search:** um índice por máquina, num serviço do sistema, com arquivos de índice
+  legíveis só pelo sistema e resultados cortados pela ACL de cada arquivo na consulta. É a forma
+  "indexador privilegiado que responde em nome do chamador".
+- **GNOME LocalSearch (Tracker):** um índice por usuário, num serviço do próprio usuário,
+  alimentado por `fanotify` sem privilégio, com `inotify` como alternativa.
+- **Parker-Wood et al. (MSST 2010):** particionar por mudança de dono ou de permissão gerou 29 479
+  partições com média de 234 entradas num servidor de 6,9 milhões de arquivos: "um índice por
+  domínio" pode significar muitos índices pequenos.
+
+Aplicado aqui, a forma mais simples é um índice por namespace, com as permissões do diretório do
+namespace, escrito por um indexador privilegiado alimentado pelo `fanotify` que nunca responde
+consultas; cada agente lê só os índices que poderia ler. Pendências: ACLs (nem o GUFI resolve),
+montagens com idmap, e a janela entre um `chmod` e o índice refletir a mudança.
 
 ## Alternativas
 
@@ -141,7 +156,8 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
   camada recusa marcas `fanotify` com identificadores de arquivo por não ter operações de
   exportação.
 - **Não existe cursor de mudanças durável no Linux.** As propostas de journal de mudanças
-  discutidas no LSFMM de 2018 e 2019 não viraram código. Antes de criar um, usar o `fanotify` e
+  discutidas no LSFMM de 2018 e 2019 não viraram código; do trabalho de Goldstein entrou só o
+  `FAN_PRE_ACCESS` (6.14). O Lustre tem changelog durável, mas ler e limpar exige root. Antes de criar um, usar o `fanotify` e
   reconstruir o índice externo na montagem e em `FAN_Q_OVERFLOW`; um passo barato é expor no
   `GET_INFO` uma época de montagem e um contador monotônico de mudanças, para o consumidor saber
   que perdeu continuidade (exige especificação da UAPI).
