@@ -300,7 +300,7 @@ run_lower() {
     long=$(head -c 100 /dev/zero | tr '\0' x)
     for i in $(seq 1 30); do
         f=$LAYER/da/o$i.md; echo "o $i" > $f
-        if [ $i -ge 29 ]; then t=int64; else t=time; fi
+        if [ $i -ge 29 ]; then t="int64"; else t="time"; fi
         $BIN/moobfs-attr set $f created $t $(( (i % 10) * 1000 )) >/dev/null || fail "q2b-attr-$fs"
         [ $((i % 2)) -eq 1 ] && { $BIN/moobfs-attr set $f kind string note >/dev/null || fail "q2b-kind-$fs"; }
         if [ $i -le 10 ]; then ti="$long$((40 - i))"; else ti="t$i"; fi
