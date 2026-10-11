@@ -3,7 +3,7 @@
 An English summary of [value-assessment.md](value-assessment.md) (in Portuguese), written so
 that a reader can decide quickly whether the project is relevant to them. The short version,
 copied from that assessment: **today, for anything outside a laboratory, SQLite or plain
-files are the recommendation.** MoobFS is an experimental kernel module with no release, no
+files are the recommendation.** MoobFS is an experimental kernel module with only a source pre-release tag, no
 measured performance and one tested kernel series; the narrow case it targets is attribute
 queries over many Unix users with the operating system's permissions deciding what each
 caller sees, while the data stay ordinary files.
@@ -64,7 +64,7 @@ assessment.
 - **The corpus is large.** The index is non-pageable RAM, bounded by `index_budget`
   (default 128 MiB, an estimated order of 10^5 inodes); near the budget, answers can be
   incomplete; rebuild is a linear scan at every mount.
-- **You need it in production today, or in any critical setting.** No release exists; the
+- **You need it in production today, or in any critical setting.** Only a source pre-release tag exists; the
   module is one author's code with three kernel-side defects found by its own tests, no
   external audit, no syzkaller, no xfstests run, no threat-model document yet. A module bug
   can mean a kernel panic or data loss.

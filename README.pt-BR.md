@@ -102,7 +102,7 @@ qualquer medição (M4). Veja o [ROADMAP.md](ROADMAP.md).
 - Índice só em RAM, não paginável, limitado por `index_budget` (padrão 128 MiB), reconstruído
   por varredura linear a cada montagem; comportamento perto da saturação não testado.
 - Montar exige `CAP_SYS_ADMIN` no namespace inicial; sem contêineres rootless.
-- A UAPI v1 pode mudar; sem release, tag ou empacotamento.
+- A UAPI v1 pode mudar; a tag `v0.1.0-experimental` é um instantâneo do fonte, sem binários, empacotamento ou suporte.
 - Nenhum número de desempenho, latência ou memória; nenhuma comparação com SQLite, FUSE ou o
   inferior puro pode ser afirmada antes do M4.
 - Sem auditoria externa, syzkaller, xfstests completo ou documento de modelo de ameaça.

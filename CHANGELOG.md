@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased — 2026-10-10
+## v0.1.0-experimental — 2026-10-10
+
+First pre-release tag: a source snapshot of M1, M2 (phases 2a–2e), M3 phase 3b and the M4
+harness, with the community and SEO files. No binaries, no packaging, no support, no
+performance numbers. Everything below was previously listed as unreleased.
 
 - `bench/`: first slice of the M4 harness: deterministic manifest generator, loader for W1-W4
   with per-call latency records, report with percentiles and dispersion, `make bench-smoke` in

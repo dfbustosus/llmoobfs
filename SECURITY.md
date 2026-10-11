@@ -94,7 +94,7 @@ These are targets for a single volunteer maintainer, not guarantees:
 - The report stays private until a fix is in `main`. The reporter and the
   maintainer agree on the disclosure date; disclosure may happen earlier if the
   reporter agrees, or if the issue becomes public elsewhere.
-- Since there are no releases, "fixed" means a commit on `main` with a test in
+- Since there are no supported releases (`v0.1.0-experimental` is a source snapshot), "fixed" means a commit on `main` with a test in
   `vm/suite.sh` or `tests/` that reproduces the problem and passes afterwards.
 - When the defect affects anyone running the module, we request a CVE through
   GitHub's CNA from the advisory. No CVE is expected for test-only or

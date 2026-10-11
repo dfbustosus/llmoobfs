@@ -8,7 +8,7 @@ Rendered copy: [studiomoob.github.io/llmoobfs/faq.html](https://studiomoob.githu
 
 MoobFS is an experimental GPL-2.0 Linux kernel module, stacked over ext4, btrfs or XFS, that
 passes POSIX operations to the lower filesystem and adds typed `user.moob.*` attributes, an
-in-memory attribute index and a `QUERY` ioctl. It is a research project with no release.
+in-memory attribute index and a `QUERY` ioctl. It is a research project; the only tag is the `v0.1.0-experimental` source pre-release.
 [`README.md`; `docs/research-originality.md` §9]
 
 ## 2. What problem does it target?
@@ -70,7 +70,7 @@ the in-memory index, the `QUERY` and `GET_INFO` ioctls, delegated reflink and de
 (provided by the lower filesystem), and acceptance runs with git, concurrent WAL-mode SQLite,
 `dm-log-writes` power-loss replay and `dm-flakey` error injection. Phase 3b (authorization in
 `QUERY`) closed with a KASAN run and is merged in `main`. Everything is tested in a VM; there
-is no release.
+is only a source pre-release tag (`v0.1.0-experimental`).
 [`README.md`; `ROADMAP.md`; `CHANGELOG.md`]
 
 ## 9. What is not implemented?
@@ -121,7 +121,7 @@ compatibility with other kernels is not promised.
 
 ## 15. Is it production-ready? Is there a release?
 
-No, and no. It is a research project with no release or tag yet; a module bug can cause a
+No, and no. It is a research project whose only tag is the `v0.1.0-experimental` source pre-release; a module bug can cause a
 kernel panic or data loss, and the project's own tests found three kernel-side defects during
 development (two in journal 0015, one in journal 0016). Run it only in a disposable VM with
 synthetic data.
