@@ -5,14 +5,14 @@
 Experimental Linux kernel module (GPL-2.0, no FUSE): a stacked filesystem layer over ext4,
 btrfs or XFS that adds typed xattr attributes, an in-memory index and a `QUERY` ioctl
 authorized by the caller's POSIX credentials. Intended as storage for LLM-agent memory.
-Research project, not for production. No release yet.
+Research project, not for production. First pre-release tag: `v0.1.0-experimental` (source only, no binaries, no support).
 
 [Português](README.pt-BR.md) · [Project site](https://studiomoob.github.io/llmoobfs/) · [FAQ](docs/faq.md) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 
 [![CI](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml)
 [![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-blue)](LICENSE)
 
-> **Experimental status. Not released, not for production use.** Facts verified in this
+> **Experimental status. Pre-release tag only (`v0.1.0-experimental`), not for production use.** Facts verified in this
 > repository as of 2026-10-10:
 > - tested on **one kernel series**, in a VM: Debian 6.12.111 in QEMU (`make vm-test`) and
 >   upstream 6.12.112 under KASAN/UBSAN/lockdep (`kasan.yml`); over ext4, btrfs and XFS only;
@@ -114,7 +114,7 @@ measurement (M4). See [ROADMAP.md](ROADMAP.md) for the planned and validation-de
 - The index is RAM only, non-pageable, bounded by `index_budget` (default 128 MiB), rebuilt by
   a linear scan at every mount; behaviour near a saturated budget on large trees is untested.
 - Mounting needs `CAP_SYS_ADMIN` in the initial user namespace; no rootless containers.
-- UAPI v1 may change; no release, no tag, no packaging.
+- UAPI v1 may change; the `v0.1.0-experimental` tag is a source snapshot, with no binaries, packaging or support.
 - No performance, latency or memory figure exists; no comparison with SQLite, FUSE or the bare
   lower filesystem may be stated before M4.
 - No external audit, no syzkaller, no full xfstests, no threat-model document yet.

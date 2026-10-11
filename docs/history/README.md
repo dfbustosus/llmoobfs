@@ -43,3 +43,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0023 — Revisão de implementação, planos e próximo experimento](0023-project-review.md)
 - [0024 — Preparação para contribuições externas: políticas, templates, documentação e CI](0024-community-readiness.md)
 - [0025 — M4: primeira fatia do harness de benchmark](0025-m4-harness-first-slice.md)
+- [0026 — Primeira tag de pre-release: v0.1.0-experimental](0026-first-prerelease-tag.md)
