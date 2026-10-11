@@ -1,7 +1,9 @@
 # Especificação: `QUERY` por domínio (UAPI v2)
 
-Estado: **proposta de especificação**, 2026-10-11, decorrente da ADR-0009 (alternativa E, aceita).
-Nada implementado. Pontos marcados **[decisão]** pedem confirmação do mantenedor antes do código.
+Estado: **especificação aceita**, 2026-10-11, decorrente da ADR-0009 (alternativa E, aceita). Os quatro
+pontos marcados **[decisão aceita]** foram aceitos pelo mantenedor no mesmo dia, nas formas recomendadas:
+domínios por `domain_depth`, ACLs estendidas fora da partição nesta versão, v1 restrita a
+`CAP_SYS_ADMIN`, e `EXDEV` para diretórios renomeados entre domínios. Implementação por fases (§8).
 
 ## 1. Objetivo
 
@@ -14,7 +16,7 @@ por candidato ao tamanho do domínio (registro 0029).
 
 - **Definição.** Um domínio é um diretório numa profundidade fixa abaixo da raiz da montagem,
   dada pela opção de montagem `domain_depth=N` (padrão 1: cada diretório de primeiro nível é um
-  domínio; 0 desliga os domínios e mantém só o comportamento da v1). **[decisão]** Alternativa
+  domínio; 0 desliga os domínios e mantém só o comportamento da v1). **[decisão aceita]** Alternativa
   considerada: marcar domínios com um atributo reservado; descartada porque qualquer dono de
   diretório poderia criar ou desfazer domínios sem o administrador.
 - **Partição.** O índice em RAM passa a ter uma partição por domínio (árvore de nomes de atributo
@@ -36,7 +38,7 @@ condições suficientes, avaliadas sobre o inode do arquivo `f` e o do diretóri
    leitura a ela.
 
 Arquivos com ACL de acesso estendida ficam fora da partição nesta versão, salvo pela condição 1.
-**[decisão]** Tratar ACLs exigiria comparar entradas nomeadas; fica para uma revisão com teste
+**[decisão aceita]** Tratar ACLs exigiria comparar entradas nomeadas; fica para uma revisão com teste
 próprio.
 
 Um arquivo que não satisfaz a regra é **heterogêneo**: não aparece em consultas v2, é contado em
@@ -91,7 +93,7 @@ por consulta. União e remoção de duplicatas ficam com o cliente. Cobre o "ou"
 
 ### 4.5 A v1
 
-**[decisão]** Proposta: `MOOB_IOC_QUERY` (v1) sobre a raiz continua existindo, com a semântica
+**[decisão aceita]** Proposta: `MOOB_IOC_QUERY` (v1) sobre a raiz continua existindo, com a semântica
 atual, mas só para quem tem `CAP_SYS_ADMIN` no namespace de usuário inicial (ferramentas de
 administração e comparação com o oráculo). Para os demais devolve `EPERM`, porque percorre todos
 os domínios e mantém o canal de tempo. Alternativa: manter a v1 aberta e documentar o canal.
@@ -100,7 +102,7 @@ os domínios e mantém o canal de tempo. Alternativa: manter a v1 aberta e docum
 
 Arquivo renomeado para outro domínio: suas entradas mudam de partição na mesma chamada, e a regra
 de homogeneidade é reavaliada no destino. **Diretório** renomeado para outro domínio: devolve
-`EXDEV`, como entre filesystems; `mv` passa a copiar e apagar. **[decisão]** Evita mover
+`EXDEV`, como entre filesystems; `mv` passa a copiar e apagar. **[decisão aceita]** Evita mover
 subárvores inteiras de partição dentro de um `rename`.
 
 ## 6. Ferramentas

@@ -26,3 +26,7 @@ respeitadas pelo inferior.
 antes do código: domínios por profundidade (`domain_depth`), ACLs estendidas fora da partição
 nesta versão, v1 restrita a `CAP_SYS_ADMIN`, e `EXDEV` para diretórios renomeados entre domínios.
 Depois, as fases Q2a a Q2e, cada uma com pull request, suíte, KASAN e medição na Azure.
+
+Atualização no mesmo dia: o mantenedor aceitou os quatro pontos nas formas recomendadas
+(`domain_depth`, ACLs estendidas fora da partição, v1 só com `CAP_SYS_ADMIN`, `EXDEV` para
+diretórios entre domínios) e autorizou o início da fase Q2a.
