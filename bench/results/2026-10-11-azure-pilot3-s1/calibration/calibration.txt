@@ -1,0 +1,3 @@
+ext4: write+fsync/s=313 fsync_p50=2834us fsync_p99=8454us
+btrfs: write+fsync/s=242 fsync_p50=3621us fsync_p99=12517us
+xfs: write+fsync/s=429 fsync_p50=2089us fsync_p99=6652us

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `QUERY`: results are copied to the caller one at a time instead of through a limit-sized
+  kernel array, and the scan of the first term starts at the first candidate and stops after
+  the last one (journal 0027). UAPI unchanged. New suite block with one attribute holding
+  several types.
 - Dentry revalidation now answers in RCU-walk for the plain case instead of always forcing
   ref-walk, so path walks through the layer stay lockless (journal 0028).
 
