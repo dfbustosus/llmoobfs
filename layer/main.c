@@ -180,6 +180,8 @@ static int moobl_show_options(struct seq_file *m, struct dentry *root)
 		seq_puts(m, ",noindex");
 	else if (MOOBL_SB(root->d_sb)->index.budget != MOOBL_INDEX_BUDGET_DEFAULT)
 		seq_printf(m, ",index_budget=%llu", MOOBL_SB(root->d_sb)->index.budget);
+	if (MOOBL_SB(root->d_sb)->index.domain_depth != 1)
+		seq_printf(m, ",domain_depth=%u", MOOBL_SB(root->d_sb)->index.domain_depth);
 	return 0;
 }
 
@@ -467,6 +469,14 @@ static int moobl_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 	};
 	int err;
 
+	/* A directory may not move to another domain or depth: its subtree's partition would
+	 * change (docs/spec-query-v2.md §5); like a cross-device rename, mv copies instead. */
+	if ((d_is_dir(old_dentry) && moobl_rename_crosses_domain(old_dir->i_sb, old_dentry, new_dentry)) ||
+	    ((flags & RENAME_EXCHANGE) && target && d_is_dir(new_dentry) &&
+	     moobl_rename_crosses_domain(old_dir->i_sb, new_dentry, old_dentry))) {
+		err = -EXDEV;
+		goto out_put;
+	}
 	trap = lock_rename(lower_old_dir, lower_new_dir);
 	if (IS_ERR(trap)) {
 		err = PTR_ERR(trap);
@@ -494,9 +504,10 @@ static int moobl_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 	if ((flags & RENAME_EXCHANGE) && target)
 		fsstack_copy_attr_all(d_inode(old_dentry),
 				      moobl_lower_inode(d_inode(old_dentry)));
-	moobl_index_renamed(old_dir->i_sb, old_dentry);
+	/* The VFS moves the dentries after this returns: place each inode at its new name. */
+	moobl_index_renamed(old_dir->i_sb, d_inode(old_dentry), new_dentry);
 	if ((flags & RENAME_EXCHANGE) && target)
-		moobl_index_renamed(old_dir->i_sb, new_dentry);
+		moobl_index_renamed(old_dir->i_sb, target, old_dentry);
 out_unlock:
 	unlock_rename(lower_old_dir, lower_new_dir);
 out_put:
@@ -524,6 +535,8 @@ static int moobl_link(struct dentry *old_dentry, struct inode *dir, struct dentr
 	if (!err)
 		set_nlink(inode, moobl_lower_inode(inode)->i_nlink);
 	moobl_unlock_parent(lower_dentry, lower_dir);
+	if (!err)
+		moobl_index_perm_changed(dir->i_sb, old_dentry);	/* nlink > 1: heterogeneous */
 	return err;
 }
 
@@ -587,8 +600,11 @@ static int moobl_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		err = vfs_set_acl(&nop_mnt_idmap, lower, posix_acl_xattr_name(type), acl);
 	else
 		err = vfs_remove_acl(&nop_mnt_idmap, lower, posix_acl_xattr_name(type));
-	if (!err)
+	if (!err) {
 		moobl_copy_attr(d_inode(dentry), d_inode(lower));
+		if (type == ACL_TYPE_ACCESS)
+			moobl_index_perm_changed(dentry->d_sb, dentry);
+	}
 	return err;
 }
 
@@ -749,8 +765,11 @@ static int moobl_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 	inode_lock(lower_inode);
 	err = notify_change(&nop_mnt_idmap, lower_dentry, &lower_ia, NULL);
 	inode_unlock(lower_inode);
-	if (!err)
+	if (!err) {
 		moobl_copy_attr(inode, lower_inode);
+		if (ia->ia_valid & (ATTR_MODE | ATTR_UID | ATTR_GID))
+			moobl_index_perm_changed(dentry->d_sb, dentry);
+	}
 	return err;
 }
 
@@ -1076,15 +1095,17 @@ struct moobl_fc {
 	bool nolinks;
 	bool noindex;
 	u64 index_budget;
+	int domain_depth;		/* -1: default */
 };
 
-enum { Opt_lower, Opt_nolinks, Opt_noindex, Opt_index_budget };
+enum { Opt_lower, Opt_nolinks, Opt_noindex, Opt_index_budget, Opt_domain_depth };
 
 static const struct fs_parameter_spec moobl_params[] = {
 	fsparam_string("lower", Opt_lower),
 	fsparam_flag("nolinks", Opt_nolinks),
 	fsparam_flag("noindex", Opt_noindex),
 	fsparam_string("index_budget", Opt_index_budget),
+	fsparam_u32("domain_depth", Opt_domain_depth),
 	{}
 };
 
@@ -1117,6 +1138,11 @@ static int moobl_parse_param(struct fs_context *fc, struct fs_parameter *param)
 		ctx->index_budget = v;
 		break;
 	}
+	case Opt_domain_depth:
+		if (result.uint_32 > 8)
+			return invalfc(fc, "domain_depth must be between 0 and 8");
+		ctx->domain_depth = (int)result.uint_32;
+		break;
 	}
 	return 0;
 }
@@ -1137,7 +1163,7 @@ static int moobl_fill_super(struct super_block *sb, struct fs_context *fc)
 	sb->s_fs_info = sbi;
 	/* Initialize the index state first: kill_sb tears it down on every failure path. */
 	moobl_index_init(sb, ctx->index_budget ? ctx->index_budget : MOOBL_INDEX_BUDGET_DEFAULT,
-			 !ctx->noindex);
+			 !ctx->noindex, ctx->domain_depth < 0 ? 1 : (unsigned int)ctx->domain_depth);
 	err = kern_path(ctx->lower, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, &sbi->lower);
 	if (err)
 		return invalfc(fc, "cannot resolve lower directory");
@@ -1220,6 +1246,7 @@ static int moobl_init_fs_context(struct fs_context *fc)
 
 	if (!ctx)
 		return -ENOMEM;
+	ctx->domain_depth = -1;
 	fc->fs_private = ctx;
 	fc->ops = &moobl_context_ops;
 	return 0;

@@ -24,6 +24,9 @@ struct moobl_index {
 	bool xattr_ok;			/* lower root answered listxattr */
 	bool incomplete;		/* an index update failed after a lower write */
 	bool initialized;		/* moobl_index_init() ran for this superblock */
+	unsigned int domain_depth;	/* depth of domain directories below the root; 0: off */
+	struct xarray fallback;		/* domain ino -> value: answer with per-result checks */
+	u32 hetero_count;		/* indexed inodes failing the homogeneity rule */
 };
 
 struct moobl_sb {
@@ -69,16 +72,19 @@ static inline struct dentry *moobl_lower_dentry(struct dentry *dentry)
 }
 
 /* index.c */
-void moobl_index_init(struct super_block *sb, u64 budget, bool enabled);
+void moobl_index_init(struct super_block *sb, u64 budget, bool enabled, unsigned int domain_depth);
 int moobl_index_build(struct super_block *sb);
 void moobl_index_destroy(struct super_block *sb);
 int moobl_index_set(struct super_block *sb, struct dentry *dentry, const char *name,
 		    const void *value, size_t size);
 void moobl_index_remove(struct super_block *sb, u64 ino, const char *name);
 void moobl_index_drop_inode(struct super_block *sb, u64 ino);
-void moobl_index_renamed(struct super_block *sb, struct dentry *dentry);
+void moobl_index_renamed(struct super_block *sb, struct inode *inode, struct dentry *where);
 void moobl_index_inode_cached(struct super_block *sb, struct inode *inode);
 void moobl_index_inode_evicted(struct super_block *sb, struct inode *inode);
 long moobl_root_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+void moobl_index_perm_changed(struct super_block *sb, struct dentry *dentry);
+bool moobl_rename_crosses_domain(struct super_block *sb, struct dentry *old_dentry,
+				 struct dentry *new_dentry);
 
 #endif
