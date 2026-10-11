@@ -26,7 +26,7 @@ grep -v '^#' "$queries" | while read -r line; do
         *) echo "equiv: query $n: unexpected SQLite plan:"; cat "$tmp/plan"; echo "EQUIV_FAIL $n"; continue ;;
     esac
     # shellcheck disable=SC2086
-    sh "$SQLBASE" query "$db" $line | sort -n > "$tmp/sql" || { echo "EQUIV_FAIL $n sqlite"; continue; }
+    sh "$SQLBASE" query "$db" $line | cut -d'|' -f1 | sort -n > "$tmp/sql" || { echo "EQUIV_FAIL $n sqlite"; continue; }
     # shellcheck disable=SC2086
     "$BIN/moobfs-index" "$lower" $line | cut -f1 | sort -n > "$tmp/oracle" || { echo "EQUIV_FAIL $n oracle"; continue; }
     if ! cmp -s "$tmp/sql" "$tmp/oracle"; then

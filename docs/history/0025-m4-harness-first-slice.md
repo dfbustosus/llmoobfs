@@ -149,3 +149,128 @@ filesystem do contêiner ou rodar em Linux (o CI usa ext4). `load` não cobre W5
 
 Reavaliar Q9; roteiro para um convidado Linux com aceleração (x86 com KVM, ou arm64 com
 Hypervisor.framework no Mac como campanha preliminar); então números e o relatório do M4.
+
+## Preparação de host de benchmark (2026-10-11)
+
+Decisão do mantenedor: a primeira campanha roda numa VM de nuvem x86_64 (Azure, D4as_v5 ou
+similar, Ubuntu 24.04, tipo de segurança Standard) usada como host, com o módulo no kernel da
+própria instância, em vez de uma VM aninhada. Adicionados `vm/bench.config` (fragmento sem
+sanitizadores nem lockdep sobre o config da distribuição), `bench/kernel-build.sh` (mesmo
+tarball 6.12.112 com o mesmo SHA-256 do workflow KASAN, `bindeb-pkg`, instalação) e
+`bench/host-setup.sh` (formata três discos dedicados, compila módulo e ferramentas, roda a
+suíte inteira no host como portão, `HOST_SETUP_PASS`). Caminho C documentado em
+`docs/bench-accelerated-guest.md`. Nenhum dos três foi executado ainda: a primeira execução
+será na instância, e o resultado entra aqui ou em registro próprio.
+
+Primeira execução de `bench/kernel-build.sh` na VM da Azure (Standard_D4as_v4, AMD EPYC 7763,
+Ubuntu 24.04 com kernel 6.17.0-1022-azure, 2026-10-11): compilação e instalação concluídas a
+partir do config do kernel Azure. Três ajustes vieram dela: o sufixo de versão saía duplicado
+(`-moobfs-bench-moobfs-bench`, porque o fragmento e o `make` definiam `LOCALVERSION`), o
+`dpkg -i` incluía o pacote `-dbg`, que falha sem informação de depuração, e o GRUB mantém o
+kernel mais novo como padrão, então o 6.12 precisa de `grub-reboot` (um boot só, com volta
+automática ao 6.17 se falhar). Corrigidos o sufixo e o pacote; o `grub-reboot` está no roteiro.
+A instância usa Trusted launch com Secure Boot ligado, que precisa ser desligado para o kernel
+não assinado. O kernel já instalado na instância mantém o sufixo duplicado; não é recompilado.
+
+## Portão no host da Azure: `HOST_SETUP_PASS` (2026-10-11)
+
+VM Standard_D4as_v4 (4 vCPU AMD EPYC 7763, 16 GB), Ubuntu 24.04, kernel
+`6.12.112-moobfs-bench-moobfs-bench` compilado por `bench/kernel-build.sh`, Secure Boot
+desligado, três discos de dados Premium SSD P6 de 64 GB com cache "Nenhum", endereçados por
+`/dev/disk/azure/scsi1/lun0..2` (os nomes `sdX` mudaram entre boots e não são usados).
+`sh bench/host-setup.sh --ext4 .../lun0 --btrfs .../lun1 --xfs .../lun2` terminou com
+`HOST_SETUP_PASS`: `ISOLATION_PASS`, `BENCH_LAYER_PASS` com `EQUIV_PASS` nos três inferiores,
+`LAYER_LOWER_PASS`, `SQLITE_VARIANTS` sem perdas, `POWER_LOSS_REPLAY_PASS`,
+`IO_ERROR_INJECTION_PASS`, `MOOBFS_ACCEPTANCE_PASS`, `MOOBFS_LAYER_PASS`, sem diagnóstico no
+`dmesg`. É o segundo ambiente em que a suíte inteira passa e o primeiro com aceleração de
+hardware. O teste de concorrência fez 12936 consultas em 5 s, contra cerca de 620 na VM
+emulada; é contagem de um teste de correção, não medida, e só ilustra por que tempos sob TCG
+não servem. O kernel ficou como padrão do GRUB (`grub-set-default`).
+
+Calibração inicial no host da Azure (P6 com bursting, 2026-10-11), escrita de 4 KiB seguida de
+`fsync`, 30 s: ext4 313/s, btrfs 229/s, xfs 418/s (de 2,4 a 4,4 ms por operação). O comando
+usado imprimiu a latência de conclusão da escrita (cerca de 10 µs), que com `--fsync=1` não
+inclui o `fsync`; `bench/calibrate.sh` passa a extrair a latência do `fsync` do JSON do `fio`.
+Decisão: a campanha que alimenta o relatório usa discos Premium SSD v2 com IOPS e vazão fixos,
+porque o bursting por créditos dos P1–P20 mudaria a velocidade do dispositivo ao longo de horas;
+os P6 atuais valem para o portão e o piloto.
+
+## Piloto no host da Azure e correções do harness (2026-10-11)
+
+Piloto (`run.sh --scale 1000 --profile 8 --reps 3 --procs 4`, seis sistemas: A-ext4,
+B-btrfs, X-xfs sem camada e C-ext4, C-btrfs, C-xfs com a camada, cada par no mesmo disco P6
+com bursting). Rodou inteiro, sem erros, com equivalência em todas as formas. Serve para validar
+o procedimento, não para concluir. Sinais a confirmar na campanha: W1 dominado pelo `fsync` do
+disco e praticamente igual com e sem camada; W2 e W4 com acréscimo de alguns microssegundos por
+operação na camada; W3 com o `QUERY` cerca de oito vezes mais lento que o SQLite com índice
+composto na mediana. Os artefatos estão no host (`build/bench/pilot-s1/`) e ainda não foram
+copiados para o repositório; os números acima não são resultado do M4.
+
+O piloto expôs três defeitos de método no W3, corrigidos antes da campanha: cada forma rodava
+uma vez por repetição (agora `--repeat`, padrão 50 em `run.sh`); os registros não separavam as
+formas (o código de operação agora carrega o número da forma, Q1–Q9, e o relatório mostra uma
+linha por forma com a mediana de resultados devolvidos); e a comparação não era equivalente
+(o SQLite passa a devolver `ino` e `path`, como o `QUERY`, e o `QUERY` também é medido como
+usuário comum, `--uid 65534`, registrado como sistema `<nome>+u`, para separar o custo da
+autorização por resultado, como o plano pede). A forma Q8 deixa de ser removida nos perfis sem
+`tag1`, para que a numeração fique estável; nesses perfis ela não casa nada em nenhum sistema.
+Validado com `make bench-smoke` em contêiner e `make vm-test` (`BENCH_LAYER_PASS` nos três).
+
+## Piloto 2 com o harness corrigido (2026-10-11)
+
+Execução remota pela chave dedicada `moobfs-bench-claude` (revogável no `authorized_keys` do
+host). Calibração com `bench/calibrate.sh`: `fsync` p50/p99 de 2,8/7,8 ms no ext4, 3,6/12,3 ms
+no btrfs e 2,1/6,8 ms no XFS (P6 com bursting). Piloto: 1000 memórias, perfil 8, 5 repetições,
+W3 com 50 execuções por forma, seis sistemas mais os três `+u`. Evidências em
+`bench/results/2026-10-11-azure-pilot2-s1/`; pacote bruto na pre-release
+`bench-2026-10-11-azure-pilot2-s1`. As 30 equivalências passaram.
+
+Medianas no par ext4 (sem camada / com camada): W1 9,90 / 9,82 ms; W2 9,3 / 12,9 µs; W4 set
+10,0 / 24,2 µs; W4 remoção 16,0 / 43,6 µs; W6 e W7 (só camada) 35 e 17 ms para 1000 memórias.
+
+W3 por forma (mediana, ext4; o padrão é igual em btrfs e XFS):
+
+| Forma | Resultados | SQLite | `QUERY` root | `QUERY` usuário comum |
+| --- | --- | --- | --- | --- |
+| Q8 (nenhum casamento) | 0 | 19 µs | 54 µs | 54 µs |
+| Q3 `namespace = AND agent =` | 3 | 16 µs | 141 µs | 142 µs |
+| Q4 | 23 | 26 µs | 178 µs | 180 µs |
+| Q5 | 70 | 43 µs | 248 µs | 254 µs |
+| Q2 | 100 | 56 µs | 323 µs | 328 µs |
+| Q6 `kind prefix` | 212 | 99 µs | 502 µs | 517 µs |
+| Q9 `weight exists` | 291 | 78 µs | 608 µs | 630 µs |
+| Q1 `kind =` | 390 | 91 µs | 843 µs | 874 µs |
+| Q7 `score` entre 250 e 750 | 513 | 225 µs | 1136 µs | 1177 µs |
+
+Leitura do código (`layer/index.c`, `do_query`) que explica a diferença:
+
+1. Custo fixo de cerca de 50 µs por chamada, visível em Q8: `kvcalloc(q->limit, ...)` aloca e
+   zera um vetor de resultados do tamanho do limite pedido (4096 × 280 bytes, cerca de 1,1 MB)
+   em toda chamada, mesmo quando nenhum resultado volta.
+2. Varredura linear do primeiro termo: sem chave de retomada, `first_after` começa em
+   `rb_first` e percorre todas as entradas do atributo, mesmo em igualdade, intervalo ou
+   prefixo, em que a árvore permitiria saltar ao primeiro valor candidato e parar depois do
+   último. Em Q3 isso custa cerca de 85 µs para 1000 entradas.
+3. Cerca de 2 µs por resultado devolvido, contra cerca de 0,4 µs no SQLite: para cada resultado
+   a camada copia o caminho, resolve-o com `vfs_path_lookup` sob as credenciais do chamador e
+   verifica a permissão (fase 3b). Como usuário comum o custo sobe só 3%: o peso está na
+   resolução do caminho, não na decisão de permissão.
+
+Decisão: 1 e 2 são ineficiências de implementação e serão corrigidas antes da campanha, com os
+mesmos testes de equivalência, isolamento e KASAN; 3 é consequência do desenho de autorização
+por resultado e fica como custo declarado, a ser medido de novo depois das correções. O SQLite
+do baseline prepara a instrução a cada chamada, o que o torna um pouco mais lento do que uma
+aplicação que reutiliza instruções preparadas; a comparação, portanto, não favorece o SQLite.
+Os pilotos 1 e 2 ficam como registro do estado anterior às correções.
+
+Nota de 2026-10-11: a primeira tentativa do piloto 4 (com a revalidação RCU do registro 0028)
+abortou na equivalência do sistema C-ext4: o `QUERY` devolveu 291 resultados a mais na forma
+Q9 do que o oráculo. A causa foi um conjunto de 1000 memórias deixado em
+`/srv/moob/layer-ext4/prof` pelo perfil do registro 0028; o `QUERY` responde sobre a montagem
+inteira, enquanto o oráculo e o SQLite olham só `bench/`. Nenhum número foi produzido. A pasta
+foi removida e o piloto refeito; `run.sh` passou a recusar começar se a raiz de uma camada
+contiver algo além de `bench/`.
+
+A trava falhou no CI do PR 20: a suíte monta a camada sobre a raiz de um ext4 recém-formatado,
+que traz `lost+found`. A trava passou a ignorar `lost+found`, que nunca tem atributos tipados.
+`make vm-test` com a correção: `BENCH_LAYER_PASS` nos três inferiores.

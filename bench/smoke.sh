@@ -59,7 +59,7 @@ mkdir -p "$OUT/err/plain"
 python3 bench/report.py --out "$OUT/report" "$OUT/rep1" "$OUT/rep2" > "$OUT/report.txt"
 grep -q '^plain W1 create: n=300 err=0' "$OUT/report.txt" || { cat "$OUT/report.txt"; fail "report W1 row"; }
 grep -q '^plain W4 attr_rm: n=300 err=0' "$OUT/report.txt" || fail "report W4 row"
-grep -q '^sqlite W3 query: n=18 err=0' "$OUT/report.txt" || { cat "$OUT/report.txt"; fail "report sqlite W3 row"; }
+[ "$(grep -c '^sqlite W3 query:Q[1-9]: n=2 err=0' "$OUT/report.txt")" -eq 9 ] || { cat "$OUT/report.txt"; fail "report sqlite W3 rows per shape"; }
 python3 bench/report.py --out "$OUT/report-err" "$OUT/err" | grep -q 'W2 read: n=0 err=300' || fail "errors not reported"
 [ -s "$OUT/report/results.csv" ] && [ -s "$OUT/report/results.json" ] || fail "report files"
 echo "BENCH_SMOKE_PASS: gen deterministic; W1/W2/W4/W8 on a plain directory; moobfs-check clean; SQLite baseline equal to the oracle on 9 shapes; SQLite W3 client recorded; report with 2 repetitions"

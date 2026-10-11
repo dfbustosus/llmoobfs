@@ -11,17 +11,55 @@ Mac com Apple Silicon isso é emulação instrução a instrução (TCG), dezena
 que o hardware e com distribuição de latências que não representa nada. O runner do GitHub
 também não tem KVM. Logo, nenhum tempo impresso por essas execuções é medida do projeto.
 
-## 2. Dois caminhos
+## 2. Três caminhos
 
 | Caminho | Hardware | Arquitetura do convidado | Valor dos números | Custo |
 | --- | --- | --- | --- | --- |
 | A. Host Linux x86_64 com KVM (bare metal ou nuvem com virtualização aninhada) | qualquer | x86_64, o mesmo kernel Debian 6.12.111 já testado | referência para o relatório do M4 | aluguel de horas ou máquina própria |
 | B. Mac Apple Silicon com Hypervisor.framework (Lima, UTM ou `qemu-system-aarch64 -accel hvf`) | o Mac de desenvolvimento | arm64, Debian 13 com kernel 6.12 arm64 | comparação relativa A/B/C na mesma máquina; arquitetura fora da matriz testada | zero |
+| C. VM de nuvem x86_64 usada como host (Azure D4as_v5, Oracle E3.Flex ou similar), com o módulo no kernel da própria instância | qualquer | x86_64, kernel 6.12.112 compilado na instância por `bench/kernel-build.sh` | medição em VM de nuvem, ambiente realista de produção; mesmo tarball do KASAN, sem instrumentação | horas de aluguel |
 
-Recomendação: B como campanha preliminar para calibrar o harness e descobrir surpresas; A para
-o relatório. Em B, o módulo é compilado para uma arquitetura nova: antes de medir, a suíte
+Recomendação (2026-10-11): C é o caminho escolhido para a primeira campanha, por juntar x86,
+custo baixo e um segundo kernel na matriz; A continua sendo a referência quando houver
+hardware dedicado; B fica como preliminar opcional. Em B, o módulo é compilado para uma arquitetura nova: antes de medir, a suíte
 inteira (`vm/suite.sh`) e uma execução sob KASAN precisam passar nesse kernel, e o relatório
 deve dizer "arm64 virtualizado, fora da matriz".
+
+## 2.1 Caminho C: VM de nuvem como host (Azure)
+
+Criação (portal da Azure): imagem Ubuntu Server 24.04 LTS x64 Gen2; tamanho
+`Standard_D4as_v5` (4 vCPU, 16 GB) ou `D4s_v5`; **tipo de segurança Standard**, não Trusted
+launch, porque o kernel compilado não é assinado e o Secure Boot o recusaria; chave SSH; só a
+porta 22; disco do SO Premium SSD 64 GB; **três discos de dados idênticos** para ext4, btrfs e
+XFS, com cache "Nenhum"; sem série B (burstable); desligamento automático.
+
+Discos para a campanha: **Premium SSD v2** com IOPS e vazão fixos e iguais nos três. Os Premium
+SSD de P1 a P20 têm bursting por créditos ligado por padrão (o P6 garante 240 IOPS e sobe até
+3500 enquanto há créditos, que se esgotam em cerca de 30 minutos de carga), então a velocidade
+do dispositivo mudaria no meio de uma campanha de horas e a diferença seria atribuída ao sistema
+medido. P30 e acima não têm bursting por créditos, mas são grandes e caros para este uso. Discos
+P6 com bursting servem para o portão `HOST_SETUP_PASS` e para o piloto, nunca para o relatório.
+
+Na instância, como root, na ordem:
+
+```bash
+apt-get update && apt-get install -y build-essential flex bison libelf-dev libssl-dev bc dpkg-dev debhelper rsync kmod git
+git clone https://github.com/studiomoob/llmoobfs && cd llmoobfs
+sh bench/kernel-build.sh            # 6.12.112 a partir do config do Ubuntu + vm/bench.config; 45-60 min em 4 vCPU
+sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=saved/' /etc/default/grub && update-grub
+grep -E "menuentry '|submenu '" /boot/grub/grub.cfg | cut -d"'" -f2     # nome exato da entrada 6.12
+grub-reboot "Advanced options for Ubuntu>Ubuntu, with Linux 6.12.112-moobfs-bench"   # só o próximo boot
+shutdown -h now   # no portal: VM desalocada, desligar "inicialização segura", ligar
+uname -r          # 6.12.112-moobfs-bench; se não subir, reiniciar volta ao kernel da Azure
+lsblk                               # identificar os três discos de dados (sdc, sdd, sde ou similares)
+sh bench/host-setup.sh --ext4 /dev/sdc --btrfs /dev/sdd --xfs /dev/sde   # formata, compila, roda a suíte inteira
+```
+
+`HOST_SETUP_PASS` é o portão: a suíte completa (`MOOBFS_LAYER_PASS`, `MOOBFS_ACCEPTANCE_PASS`)
+passou nesse kernel e nesses discos, sem diagnóstico no `dmesg`. Qualquer falha vira registro
+antes de medir. Depois, calibração (§5) e campanha (§6) com os mesmos dispositivos montados.
+Se o KASAN do kernel 6.12.112 ainda não tiver rodado nessa máquina, não é necessário: o
+workflow já cobre esse kernel; o que a suíte valida aqui é o host e os discos.
 
 ## 3. Preparar o convidado (caminho B, Lima)
 
@@ -85,9 +123,12 @@ usa 4 KiB em Debian arm64; 16 KiB mudaria limites de xattr do ext4), e `/tools` 
 
 ## 5. Calibrar o disco
 
-`fio --name=cal --filename=/mnt/moob-lower/cal --size=256M --rw=randwrite --bs=4k --fsync=1
---runtime=30 --time_based` em cada inferior, antes das cargas, para saber a latência de fsync
-do dispositivo virtual. O resultado entra em `environment.txt` da campanha.
+`sh bench/calibrate.sh --out <dir da campanha> ext4=/srv/moob/ext4 btrfs=/srv/moob/btrfs
+xfs=/srv/moob/xfs`: 30 s de escritas aleatórias de 4 KiB, cada uma seguida de `fsync`, por
+inferior; imprime operações por segundo e a latência do próprio `fsync` (p50, p99) e guarda o
+JSON do `fio`. A latência de conclusão da escrita (`clat`) não serve para isso: com `--fsync=1`
+ela mede só a escrita no cache de página (cerca de 10 µs no host da Azure). O resumo entra no
+relatório junto com o `environment.txt`.
 
 ## 6. Executar a campanha
 
