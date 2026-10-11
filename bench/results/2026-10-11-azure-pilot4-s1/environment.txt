@@ -1,0 +1,9 @@
+date: 2026-10-11T14:41:39Z
+kernel: Linux 6.12.112-moobfs-bench-moobfs-bench x86_64
+cpu: AMD EPYC 7763 64-Core Processor  cores: 4
+memory: 16329084 kB
+kvm: absent  (host virtualization: microsoft)
+sqlite: 3.45.1 2024-01-30
+scale: 1000 profile: 8 reps: 5 seed: 1 procs: 4 w3_repeat: 50 w3_uid: 65534
+systems: plain=[ A-ext4=/srv/moob/ext4/plain B-btrfs=/srv/moob/btrfs/plain X-xfs=/srv/moob/xfs/plain ] layer=[ C-ext4=/srv/moob/layer-ext4:/srv/moob/ext4/lower C-btrfs=/srv/moob/layer-btrfs:/srv/moob/btrfs/lower C-xfs=/srv/moob/layer-xfs:/srv/moob/xfs/lower ]
+commit: 28f6efa
