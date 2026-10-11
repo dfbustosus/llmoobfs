@@ -1,9 +1,31 @@
 # Harness de benchmark do M4 — especificação
 
-Estado: proposta (2026-10-10). Complementa [benchmark-plan.md](benchmark-plan.md), que define
-perguntas, baselines, cargas, escalas, métricas e método. Este documento define os programas,
-formatos e testes que tornam o plano executável e reproduzível por terceiros. Nada aqui está
-implementado.
+Estado: em implementação (2026-10-10). Complementa [benchmark-plan.md](benchmark-plan.md), que
+define perguntas, baselines, cargas, escalas, métricas e método. Este documento define os
+programas, formatos e testes que tornam o plano executável e reproduzível por terceiros.
+
+Implementado em `bench/` (registro 0025): `gen` (manifesto determinístico), `load` (W1, W2, W3,
+W4 com registro de latência por chamada), `report.py` (percentis, dispersão, CSV e JSON) e
+`smoke.sh` (`make bench-smoke`, correção do próprio harness em diretório comum, no CI),
+`sqlbase.sh` (esquema e índices compostos do §4, carga a partir do manifesto, SQL das formas
+Q1–Q9, `EXPLAIN QUERY PLAN`) e `equiv.sh` (conjuntos de inodes iguais entre `QUERY`, SQLite e
+oráculo, sem truncamento; exercitado em `vm/suite.sh` sobre a camada). `sqlbase` e `equiv` são
+shell sobre a CLI `sqlite3` para rodarem no initramfs da VM; a medição de latência do caminho
+SQLite ainda não existe e será em C. W6 e W7 são workloads do `load` (remontagem com e sem descarte do page cache até o primeiro
+`QUERY`), em vez de um `mountclock` separado. W5 está em `load`; W9 é o bloco de replay da suíte; `run.sh` orquestra a campanha;
+`sqlclient.c` mede W3 nos baselines pela biblioteca SQLite. Todos os componentes desta
+especificação existem; nenhum número foi produzido (falta hardware acelerado).
+
+Achado do portão de plano (2026-10-10, 300 inodes, perfil 16): o planejador do SQLite escolhe
+`SCAN` para Q1 (`kind = note`, 41% das linhas), Q5 (`pinned = 1 AND score < 500`) e Q9
+(`weight IS NOT NULL`, 100% das linhas), mesmo com os índices do §4.1 e `ANALYZE`, porque a
+seletividade é baixa nessa escala. O portão passou a registrar `SCAN` como exceção a justificar
+em cada medição, não como falha; a igualdade de conjuntos continua obrigatória. Q9 sobre um
+atributo presente em todas as linhas será sempre varredura em qualquer sistema; a forma deve
+ser reavaliada ou aplicada a um atributo minoritário antes do M4 medir. Resolvido no mesmo
+dia: `weight` passou a existir em 30% das memórias (acima), então Q9 pergunta por uma minoria.
+Desvio registrado: o perfil mínimo passou a chamar-se 6, não 3, porque o §3 fixa seis atributos
+em todo perfil; perfis válidos são 6, 8 e 16. Nenhum número de desempenho foi produzido.
 
 ## 1. Por que um harness próprio
 
@@ -43,8 +65,9 @@ semente do conteúdo, e os atributos como `nome=tipo:valor`. Regras:
 - Atributos fixos em todo perfil: `namespace` (string, 8 valores), `agent` (string, 32),
   `memory_id` (string UUID v7 textual, único), `kind` (string, 6 valores, Zipf), `score`
   (int64 uniforme 0..1000), `created` (time crescente com jitter). Perfis 8 e 16 acrescentam
-  `pinned` (bool, 10% verdadeiro), `weight` (double normal), `tag1..tagN` (string, 50 valores,
-  Zipf) e `raw` (raw de 256 bytes, só no perfil 16, nunca indexado).
+  `pinned` (bool, 10% verdadeiro), `weight` (double normal, presente em 30% das memórias, para
+  que a consulta de existência Q9 seja seletiva; decisão de 2026-10-10), `tag1..tagN` (string,
+  50 valores, Zipf) e `raw` (raw de 256 bytes, só no perfil 16, nunca indexado).
 - Tamanhos de conteúdo log-normais com mediana 2 KiB e cauda até 64 KiB; conteúdo
   pseudoaleatório a partir da semente da linha, com 15% das memórias duplicadas byte a byte
   de outra, para W-compartilhar.

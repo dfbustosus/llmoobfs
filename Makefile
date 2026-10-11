@@ -6,7 +6,7 @@ HEADERS = include/moobfs_format.h
 KDIR ?= /lib/modules/$(shell uname -r)/build
 BUILD ?= build/host
 
-.PHONY: all tools attr-tools test fuzz module layer vm-test
+.PHONY: all tools attr-tools bench-tools bench-smoke test fuzz module layer vm-test
 all: tools
 tools: $(BUILD)/mkfs.moobfs $(BUILD)/fsck.moobfs $(BUILD)/attr_test
 $(BUILD):
@@ -25,6 +25,18 @@ $(BUILD)/moobfs-check: tools/moobfs-check.c common/attr.c include/moobfs_attr.h 
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tools/moobfs-check.c common/attr.c $(LDFLAGS) -o $@
 $(BUILD)/moobfs-index: tools/moobfs-index.c tools/query-common.h common/attr.c include/moobfs_attr.h include/moobfs_ioctl.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude tools/moobfs-index.c common/attr.c $(LDFLAGS) -o $@
+# M4 benchmark harness (docs/benchmark-harness.md). gen is portable; load is Linux-only.
+bench-tools: $(BUILD)/bench-gen $(BUILD)/bench-load $(BUILD)/bench-sqlclient
+$(BUILD)/bench-gen: bench/gen.c bench/common.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) bench/gen.c -lm $(LDFLAGS) -o $@
+$(BUILD)/bench-load: bench/load.c bench/common.h tools/query-common.h common/attr.c include/moobfs_attr.h include/moobfs_ioctl.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) -Iinclude -Itools bench/load.c common/attr.c -lm $(LDFLAGS) -o $@
+# the SQLite client needs libsqlite3-dev; SQLITE_LIBS adds what a static link requires
+SQLITE_LIBS ?= -lsqlite3
+$(BUILD)/bench-sqlclient: bench/sqlclient.c bench/common.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARN) bench/sqlclient.c $(SQLITE_LIBS) -lm $(LDFLAGS) -o $@
+bench-smoke: bench-tools attr-tools
+	sh bench/smoke.sh $(BUILD)
 test: tools
 	$(BUILD)/attr_test
 	MOOB_BUILD_DIR=$(BUILD) python3 tests/test_images.py

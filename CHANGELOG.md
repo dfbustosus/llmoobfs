@@ -2,6 +2,12 @@
 
 ## Unreleased — 2026-10-10
 
+- `bench/`: first slice of the M4 harness: deterministic manifest generator, loader for W1-W4
+  with per-call latency records, report with percentiles and dispersion, `make bench-smoke` in
+  CI. Correctness only; no performance numbers. `bench/sqlbase.sh` (SQLite baseline schema,
+  composite indexes, plan gate) and `bench/equiv.sh` (kernel, SQLite and oracle must agree)
+  run in the VM suite over the layer. W5, W6/W7, W8, `bench/run.sh` (campaign orchestrator)
+  and `bench/sqlclient.c` (W3 through libsqlite3 for the baselines) complete the harness.
 - SEO/GEO files (plan `docs/seo-geo-plan.md`, journal 0024): `README.md` reorganized into the
   planned section order (banner and "At a glance" unchanged; new "How it works", "What is
   implemented, with evidence", "Limitations", comparison, "Documentation map", "Prior work and

@@ -218,6 +218,59 @@ run_lower() {
     cmp -s /tmp/k.txt /tmp/o.txt || { diff /tmp/k.txt /tmp/o.txt; fail "race-final-mismatch-$fs"; }
     rm -rf $LAYER/ns || fail "iso-cleanup-$fs"
     echo "ISOLATION_PASS: $fs"
+    # M4 harness over the layer (correctness, no numbers): W1 creates a profile-16 dataset,
+    # W2 reads it, every W3 shape agrees with the oracle, W3 and W4 record one entry per call
+    mkdir -p $LAYER/bench && chmod 0755 $LAYER/bench || fail "bench-mkdir-$fs"
+    $BIN/bench-gen --seed 11 --inodes 300 --profile 16 --out /tmp/bench-m.txt || fail "bench-gen-$fs"
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W1 --procs 2 --out /tmp/bench-w1 || fail "bench-w1-$fs"
+    [ "$(find $LAYER/bench -type f -name '*.md' | wc -l)" -eq 300 ] || fail "bench-w1-count-$fs"
+    $BIN/moobfs-check $LOWER/bench > /tmp/bench-check.json || { cat /tmp/bench-check.json; fail "bench-check-$fs"; }
+    bench_attrs=$(grep -v '^#' /tmp/bench-m.txt | awk -F'\t' '{ n += split($5, a, " ") } END { print n }')
+    grep -q "\"typed_attributes\": $bench_attrs" /tmp/bench-check.json || fail "bench-check-attrs-$fs"
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W2 --procs 2 --out /tmp/bench-w2 || fail "bench-w2-$fs"
+    grep -v '^#' $BIN/bench-queries-w3.txt > /tmp/bench-q.txt || fail "bench-queries-$fs"
+    nq=0
+    while read -r qline; do
+        # shellcheck disable=SC2086
+        same_query $qline || fail "bench-w3-equiv-$nq-$fs"
+        nq=$((nq + 1))
+    done < /tmp/bench-q.txt
+    [ "$nq" -eq 9 ] || fail "bench-w3-shapes-$fs"
+    $BIN/bench-load --queries /tmp/bench-q.txt --target $LAYER/bench --root $LAYER --workload W3 --out /tmp/bench-w3 || fail "bench-w3-$fs"
+    # SQLite baseline next to the files: plan gate (SEARCH, never SCAN) and three-way equivalence
+    rm -f /tmp/bench-base.db*
+    SQLITE=$TOOLS/sqlite3 sh $BIN/bench-sqlbase.sh init /tmp/bench-base.db || fail "bench-sqlbase-init-$fs"
+    SQLITE=$TOOLS/sqlite3 sh $BIN/bench-sqlbase.sh load /tmp/bench-base.db /tmp/bench-m.txt $LAYER/bench || fail "bench-sqlbase-load-$fs"
+    env SQLITE=$TOOLS/sqlite3 SQLBASE=$BIN/bench-sqlbase.sh BIN=$BIN sh $BIN/bench-equiv.sh $BIN/bench-queries-w3.txt /tmp/bench-base.db $LOWER/bench $LAYER | tee /tmp/bench-equiv.txt | tail -1 | grep -q '^EQUIV_PASS: 9 shapes (kernel' || { cat /tmp/bench-equiv.txt; fail "bench-equiv-$fs"; }
+    tail -1 /tmp/bench-equiv.txt
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --workload W4 --out /tmp/bench-w4 || fail "bench-w4-$fs"
+    [ "$(cat /tmp/bench-w1.*.rec /tmp/bench-w2.*.rec /tmp/bench-w3.*.rec /tmp/bench-w4.*.rec | wc -c)" -eq $(( (300 + 300 + 9 + 600) * 32 )) ] || fail "bench-records-$fs"
+    # W8: mixed reads, attribute updates and queries from 10 processes; every call recorded
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --root $LAYER --queries /tmp/bench-q.txt --workload W8 --procs 10 --out /tmp/bench-w8 || fail "bench-w8-$fs"
+    [ "$(cat /tmp/bench-w8.*.rec | wc -c)" -ge $(( 300 * 32 )) ] || fail "bench-w8-records-$fs"
+    # W5: three mutators renaming and recreating every memory while process 0 cycles the queries;
+    # afterwards the tree must be whole and every W3 shape must still equal the oracle
+    $BIN/bench-load --manifest /tmp/bench-m.txt --target $LAYER/bench --root $LAYER --queries /tmp/bench-q.txt --workload W5 --procs 4 --out /tmp/bench-w5 || fail "bench-w5-$fs"
+    [ "$(find $LAYER/bench -type f -name '*.md' | wc -l)" -eq 300 ] || fail "bench-w5-count-$fs"
+    find $LAYER/bench -name '*.away' | grep -q . && fail "bench-w5-leftover-$fs"
+    $BIN/moobfs-check $LOWER/bench > /tmp/bench-check.json || { cat /tmp/bench-check.json; fail "bench-w5-check-$fs"; }
+    while read -r qline; do
+        # shellcheck disable=SC2086
+        same_query $qline || fail "bench-w5-equiv-$fs"
+    done < /tmp/bench-q.txt
+    # W6 (cold: page cache dropped) and W7 (warm): remount and first QUERY; the layer must be mounted again afterwards
+    $BIN/bench-load --workload W6 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w6 --repeat 2 || fail "bench-w6-$fs"
+    $BIN/bench-load --workload W7 --target $LAYER --lower $LOWER --queries /tmp/bench-q.txt --out /tmp/bench-w7 --repeat 2 || fail "bench-w7-$fs"
+    [ "$(cat /tmp/bench-w6.0.rec /tmp/bench-w7.0.rec | wc -c)" -eq $(( 4 * 32 )) ] || fail "bench-mount-records-$fs"
+    grep -q "moobfs_layer $LAYER\| $LAYER " /proc/mounts || fail "bench-remounted-$fs"
+    $BIN/query $LAYER info | grep -q 'flags=0x0\|flags=0 ' || fail "bench-remount-flags-$fs"
+    rm -rf $LAYER/bench /tmp/bench-* || fail "bench-cleanup-$fs"
+    # the campaign orchestrator, one repetition at a tiny scale: procedure only, never numbers
+    env BIN=$BIN SQLITE=$TOOLS/sqlite3 sh $BIN/bench-run.sh --out /tmp/bench-run --scale 60 --profile 16 --reps 1 --procs 2 --layer "C-$fs=$LAYER:$LOWER" > /tmp/bench-run.log 2>&1 || { tail -20 /tmp/bench-run.log; fail "bench-run-$fs"; }
+    grep -q '^BENCH_RUN_DONE\|BENCH_RUN_DONE' /tmp/bench-run.log || fail "bench-run-done-$fs"
+    [ -s /tmp/bench-run/environment.txt ] && [ -s "/tmp/bench-run/rep1/C-$fs/w3.0.rec" ] && [ -s "/tmp/bench-run/rep1/C-$fs/equiv.txt" ] || fail "bench-run-artifacts-$fs"
+    rm -rf /tmp/bench-run /tmp/bench-run.log $LAYER/bench
+    echo "BENCH_LAYER_PASS: $fs"
     mkdir -p $LAYER/fsx
     $BIN/fsx -q -N 5000 -S 1 $LAYER/fsx/file1 || fail "fsx-1-$fs"
     $BIN/fsx -q -N 3000 -S 2 -r 512 -w 512 $LAYER/fsx/file2 || fail "fsx-2-$fs"

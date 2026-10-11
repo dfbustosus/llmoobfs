@@ -26,6 +26,10 @@ jobs:
           LDFLAGS='-fsanitize=address,undefined'
       - name: Fuzz the attribute encoding (libFuzzer, bounded time)
         run: make fuzz FUZZ_TIME=30
+      - name: Benchmark harness smoke test (correctness only, no numbers)
+        run: |
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsqlite3-dev sqlite3
+          make bench-smoke
       - name: Validate site links
         run: python3 scripts/check-site.py
   lint:
