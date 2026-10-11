@@ -1,6 +1,8 @@
 # ADR-0008 — Autorização do `QUERY` com reaproveitamento por diretório dentro de uma consulta
 
-Data: 2026-10-11. Estado: **proposta**, aguardando decisão do mantenedor. Nada implementado.
+Data: 2026-10-11. Estado: **proposta em espera**. Decisão do mantenedor em 2026-10-11: manter
+a autorização como está e reavaliar esta proposta depois que o M4 mostrar se consultas que
+devolvem centenas de resultados fazem parte do uso real. Nada implementado.
 Não substitui decisão anterior; refina como o contrato de autorização da fase 3b (registro 0020,
 `docs/spec-m3.md` §3.1) é cumprido.
 
