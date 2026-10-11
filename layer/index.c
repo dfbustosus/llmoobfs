@@ -9,7 +9,8 @@
  * set of entries of one attribute name in one domain, split again by whether
  * the inode passes the homogeneity rule. Answers MOOB_IOC_QUERY (all
  * partitions; privileged when domains are on) and MOOB_IOC_GET_INFO on the
- * mount root, and MOOB_IOC_QUERY2 (one domain) on a domain directory.
+ * mount root, and MOOB_IOC_QUERY2 and MOOB_IOC_QUERY2_BATCH (one domain) on a
+ * domain directory.
  */
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -1011,15 +1012,16 @@ void moobl_index_inode_evicted(struct super_block *sb, struct inode *inode)
 
 /* ---- QUERY -------------------------------------------------------------- */
 
-static int term_check(const struct moob_query_term *t)
+/* allowed: the term flags the caller's request version accepts (0 for the v1 QUERY). */
+static int term_check(const struct moob_query_term *t, u8 allowed)
 {
 	size_t nlen = strnlen(t->name, sizeof(t->name));
 
-	if (nlen == sizeof(t->name) || !moob_attr_name_ok(t->name, nlen) || t->reserved[0] ||
+	if (nlen == sizeof(t->name) || !moob_attr_name_ok(t->name, nlen) || (t->flags & ~allowed) ||
 	    t->pad[0] || t->pad[1] || t->pad[2])
 		return -EINVAL;
-	if (t->op == MOOB_OP_EXISTS)
-		return (t->type || t->len) ? -EINVAL : 0;
+	if (t->op == MOOB_OP_EXISTS)	/* "exists or missing" would match everything */
+		return (t->type || t->len || t->flags) ? -EINVAL : 0;
 	if (t->op < MOOB_OP_EQ || t->op > MOOB_OP_PREFIX)
 		return -EINVAL;
 	switch (t->type) {
@@ -1078,7 +1080,12 @@ static bool inode_matches_rest(struct moobl_ix_inode *rec, const struct moob_que
 	for (i = 1; i < nterms; i++) {
 		struct moobl_ix_entry *e = entry_find(rec, terms[i].name);
 
-		if (!e || !entry_matches(e, &terms[i]))
+		if (!e) {
+			if (!(terms[i].flags & MOOB_TERM_MISSING_OK))
+				return false;
+			continue;
+		}
+		if (!entry_matches(e, &terms[i]))
 			return false;
 	}
 	return true;
@@ -1093,7 +1100,12 @@ static bool inode_matches_all(struct moobl_ix_inode *rec, const struct moob_quer
 	for (i = 0; i < nterms; i++) {
 		struct moobl_ix_entry *e = entry_find(rec, terms[i].name);
 
-		if (!e || !entry_matches(e, &terms[i]))
+		if (!e) {
+			if (!(terms[i].flags & MOOB_TERM_MISSING_OK))
+				return false;
+			continue;
+		}
+		if (!entry_matches(e, &terms[i]))
 			return false;
 	}
 	return true;
@@ -1628,7 +1640,7 @@ static long do_query(struct super_block *sb, struct file *file, void __user *arg
 		goto out;
 	}
 	for (i = 0; i < q->nterms && !err; i++)
-		err = term_check(&q->terms[i]);
+		err = term_check(&q->terms[i], 0);
 	sc.scan = q->terms[0].name;
 	if (!err)
 		err = query_run(sb, file, q->terms, q->nterms, q->limit, q->results, &sc, NULL, NULL,
@@ -1785,83 +1797,166 @@ static int order_check(const struct moob_query2 *q)
  * it fall back to them. With order_by the attribute's entries of order_type are walked in
  * the requested direction; a cursor resumes after the last result of a previous call.
  */
-static long do_query2(struct super_block *sb, struct file *file, void __user *arg)
+static long query2_target(struct super_block *sb, struct file *file, u64 *domain,
+			  unsigned int *depth)
 {
 	struct moobl_index *ix = IX(sb);
-	struct moobl_qscope sc = { 0 };
-	struct moobl_resume *start = NULL, *last = NULL;
-	struct moob_query2 *q;
-	unsigned int depth;
-	u64 domain, qhash;
-	u32 i;
-	long err = 0;
 
 	if (!ix->enabled)
 		return -ENOSYS;
 	if (!ix->domain_depth)
 		return -EOPNOTSUPP;
 	if (!d_is_dir(file->f_path.dentry) ||
-	    !depth_and_domain(ix, file->f_path.dentry, &depth, &domain) ||
-	    depth != ix->domain_depth)
+	    !depth_and_domain(ix, file->f_path.dentry, depth, domain) ||
+	    *depth != ix->domain_depth)
 		return -ENOTTY;
 	if (inode_permission(&nop_mnt_idmap, file_inode(file), MAY_EXEC | MAY_READ))
 		return -EACCES;
-	q = memdup_user(arg, sizeof(*q));
-	if (IS_ERR(q))
-		return PTR_ERR(q);
+	return 0;
+}
+
+static long query2_validate(const struct moob_query2 *q)
+{
+	u32 i, plain = 0;
+	long err;
+
 	if (q->version != MOOB_QUERY2_VERSION || q->nterms > MOOB_QUERY_MAX_TERMS ||
 	    !q->limit || q->limit > MOOB_QUERY_MAX_LIMIT || q->flags ||
-	    !all_zero(q->pad, sizeof(q->pad)) || !all_zero(q->reserved, sizeof(q->reserved))) {
-		err = -EINVAL;
-		goto out;
-	}
+	    !all_zero(q->pad, sizeof(q->pad)) || !all_zero(q->reserved, sizeof(q->reserved)))
+		return -EINVAL;
 	err = order_check(q);
-	for (i = 0; i < q->nterms && !err; i++)
-		err = term_check(&q->terms[i]);
-	if (err)
-		goto out;
+	for (i = 0; i < q->nterms && !err; i++) {
+		err = term_check(&q->terms[i], MOOB_TERM_MISSING_OK);
+		if (!(q->terms[i].flags & MOOB_TERM_MISSING_OK))
+			plain++;
+	}
+	/* a scan needs one term that only matches carriers of its attribute (spec §4.1) */
+	if (!err && !q->order_by[0] && !plain)
+		err = -EINVAL;
+	return err;
+}
+
+/* Runs a validated request (kernel copy) and fills its count, truncated and cursor. */
+static long query2_exec(struct super_block *sb, struct file *file, struct moob_query2 *q,
+			u64 domain, unsigned int depth)
+{
+	struct moobl_index *ix = IX(sb);
+	struct moobl_qscope sc = { 0 };
+	struct moobl_resume *start = NULL, *last = NULL;
+	struct moob_query_term *t = NULL;
+	u64 qhash;
+	u32 i;
+	long err;
+
 	sc.domain = domain;
 	sc.strip = depth;
 	sc.check = xa_load(&ix->fallback, (unsigned long)domain) != NULL;
 	sc.ordered = q->order_by[0] != '\0';
 	sc.desc = q->order == MOOB_ORDER_DESC;
 	sc.otype = q->order_type;
-	sc.scan = sc.ordered ? q->order_by : q->terms[0].name;
+	err = query_hash(ix, q, domain, sc.check, &qhash);
+	if (err)
+		return err;
+	/* execution copy of the terms: a plain scan must lead with a term without MISSING_OK */
+	t = kmemdup(q->terms, sizeof(q->terms), GFP_KERNEL);
+	start = kzalloc(sizeof(*start), GFP_KERNEL);
+	last = kzalloc(sizeof(*last), GFP_KERNEL);
+	if (!t || !start || !last) {
+		err = -ENOMEM;
+		goto out;
+	}
+	if (!sc.ordered && (t[0].flags & MOOB_TERM_MISSING_OK)) {
+		for (i = 1; i < q->nterms; i++)
+			if (!(t[i].flags & MOOB_TERM_MISSING_OK)) {
+				swap(t[0], t[i]);
+				break;
+			}
+	}
+	sc.scan = sc.ordered ? q->order_by : t[0].name;
 	if (!sc.ordered) {
 		for (i = 0; i < q->nterms; i++)
-			if (q->terms[i].op == MOOB_OP_EQ)
+			if (t[i].op == MOOB_OP_EQ && !(t[i].flags & MOOB_TERM_MISSING_OK))
 				sc.leap_idx[sc.nleap++] = (u8)i;
 		sc.leap = sc.nleap >= 2;
 		if (sc.leap)
-			sc.scan = q->terms[sc.leap_idx[0]].name;	/* cursor key: the lead term */
-	}
-	err = query_hash(ix, q, domain, sc.check, &qhash);
-	if (err)
-		goto out;
-	start = kzalloc(sizeof(*start), GFP_KERNEL);
-	last = kzalloc(sizeof(*last), GFP_KERNEL);
-	if (!start || !last) {
-		err = -ENOMEM;
-		goto out;
+			sc.scan = t[sc.leap_idx[0]].name;	/* cursor key: the lead term */
 	}
 	if (!all_zero(q->cursor, sizeof(q->cursor))) {
 		err = cursor_decode(ix, q->cursor, qhash, sc.scan, &sc, start);
 		if (err)
 			goto out;
 	}
-	err = query_run(sb, file, q->terms, q->nterms, q->limit, q->results, &sc, start, last,
+	err = query_run(sb, file, t, q->nterms, q->limit, q->results, &sc, start, last,
 			&q->count, &q->truncated);
 	if (err)
 		goto out;
 	memset(q->cursor, 0, sizeof(q->cursor));
 	if (q->truncated && last->valid)
 		cursor_encode(ix, q->cursor, last, qhash);
-	if (copy_to_user(arg, q, sizeof(*q)))
-		err = -EFAULT;
 out:
+	kfree(t);
 	kfree(start);
 	kfree(last);
+	return err;
+}
+
+static long do_query2(struct super_block *sb, struct file *file, void __user *arg)
+{
+	struct moob_query2 *q;
+	unsigned int depth;
+	u64 domain;
+	long err;
+
+	err = query2_target(sb, file, &domain, &depth);
+	if (err)
+		return err;
+	q = memdup_user(arg, sizeof(*q));
+	if (IS_ERR(q))
+		return PTR_ERR(q);
+	err = query2_validate(q);
+	if (!err)
+		err = query2_exec(sb, file, q, domain, depth);
+	if (!err && copy_to_user(arg, q, sizeof(*q)))
+		err = -EFAULT;
 	kfree(q);
+	return err;
+}
+
+/* Several QUERY2 requests on one domain: one permission check, all validated first (§4.3). */
+static long do_query2_batch(struct super_block *sb, struct file *file, void __user *arg)
+{
+	struct moob_query2_batch b;
+	struct moob_query2 *qs;
+	void __user *uq;
+	unsigned int depth;
+	u64 domain;
+	u32 i;
+	long err;
+
+	err = query2_target(sb, file, &domain, &depth);
+	if (err)
+		return err;
+	if (copy_from_user(&b, arg, sizeof(b)))
+		return -EFAULT;
+	if (b.version != MOOB_QUERY2_VERSION || !b.nqueries || b.nqueries > MOOB_QUERY2_BATCH_MAX ||
+	    !all_zero(b.reserved, sizeof(b.reserved)))
+		return -EINVAL;
+	uq = u64_to_user_ptr(b.queries);
+	qs = kvmalloc_array(b.nqueries, sizeof(*qs), GFP_KERNEL);
+	if (!qs)
+		return -ENOMEM;
+	if (copy_from_user(qs, uq, b.nqueries * sizeof(*qs))) {
+		err = -EFAULT;
+		goto out;
+	}
+	for (i = 0; i < b.nqueries && !err; i++)
+		err = query2_validate(&qs[i]);
+	for (i = 0; i < b.nqueries && !err; i++)
+		err = query2_exec(sb, file, &qs[i], domain, depth);
+	if (!err && copy_to_user(uq, qs, b.nqueries * sizeof(*qs)))
+		err = -EFAULT;
+out:
+	kvfree(qs);
 	return err;
 }
 
@@ -1921,6 +2016,8 @@ long moobl_root_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	if (cmd == MOOB_IOC_QUERY2)
 		return do_query2(sb, file, (void __user *)arg);
+	if (cmd == MOOB_IOC_QUERY2_BATCH)
+		return do_query2_batch(sb, file, (void __user *)arg);
 	if (file->f_path.dentry != sb->s_root)
 		return -ENOTTY;
 	switch (cmd) {
