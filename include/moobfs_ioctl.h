@@ -76,6 +76,7 @@ struct moob_query {
 #define MOOB_FLAG_INDEX_OFF 0x2U
 #define MOOB_FLAG_PATHS_STALE 0x4U
 #define MOOB_FLAG_INDEX_INCOMPLETE 0x8U
+#define MOOB_FLAG_DOMAINS 0x10U			/* domain_depth > 0: QUERY2 on domain directories */
 
 struct moob_info {
 	__u32 uapi_version;
@@ -91,10 +92,40 @@ struct moob_info {
 	__u32 index_entries;			/* typed attribute entries indexed */
 	__u32 index_inodes;			/* inodes with at least one typed attribute */
 	char lower_fs[16];			/* lower filesystem type name */
-	__u64 reserved[4];
+	__u32 domain_depth;			/* 0: domains off (v1 only) */
+	__u32 heterogeneous;			/* indexed inodes that fail the homogeneity rule */
+	__u32 fallback_domains;			/* domains answered with per-result checks */
+	__u32 pad;
+	__u64 reserved[2];
+};
+
+/*
+ * QUERY2 (docs/spec-query-v2.md): issued on an open descriptor of a domain directory.
+ * Answers from that domain's partition only; results are paths relative to the domain
+ * directory. order_by, order, cursor and per-term flags (terms[i].reserved[0]) are
+ * reserved for later phases and must be zero in this version.
+ */
+#define MOOB_QUERY2_VERSION 2U
+#define MOOB_QUERY2_CURSOR 128U
+
+struct moob_query2 {
+	__u32 version;				/* MOOB_QUERY2_VERSION */
+	__u32 nterms;				/* 1..MOOB_QUERY_MAX_TERMS */
+	__u32 limit;				/* 1..MOOB_QUERY_MAX_LIMIT */
+	__u32 flags;				/* must be 0 */
+	__u64 results;				/* user pointer to struct moob_query_result[limit] */
+	__u32 count;				/* out */
+	__u32 truncated;			/* out */
+	char order_by[MOOB_QUERY_NAME_MAX + 1];	/* must be empty for now */
+	__u8 order;				/* must be 0 for now */
+	__u8 pad[6];
+	__u8 cursor[MOOB_QUERY2_CURSOR];	/* must be zero for now */
+	__u64 reserved[4];			/* must be 0 */
+	struct moob_query_term terms[MOOB_QUERY_MAX_TERMS];
 };
 
 #define MOOB_IOC_QUERY _IOWR(MOOB_IOC_MAGIC, 1, struct moob_query)
 #define MOOB_IOC_GET_INFO _IOR(MOOB_IOC_MAGIC, 2, struct moob_info)
+#define MOOB_IOC_QUERY2 _IOWR(MOOB_IOC_MAGIC, 3, struct moob_query2)
 
 #endif

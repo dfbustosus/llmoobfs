@@ -26,6 +26,7 @@ out=""; scale=1000; profile=8; reps=3; seed=1; procs=4
 W3_REPEAT=${W3_REPEAT:-50}       # executions of every W3 shape per repetition
 W3_UID=${W3_UID:-65534}          # regular user for the authorization measurement (nobody)
 QUERY_ONLY=${QUERY_ONLY:-0}      # 1: only W1 (to build the dataset), W3 (root and regular user) and W7
+LAYER_MOUNT_OPTS=${LAYER_MOUNT_OPTS:-domain_depth=0}  # options after lower= when W6/W7 remount (v1 QUERY needs depth 0)
 plain=""; layer=""
 while [ $# -gt 0 ]; do
     case $1 in
@@ -110,7 +111,7 @@ run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for pla
     fi
     if [ "$QUERY_ONLY" = 1 ]; then
         if [ -n "$mount" ] && [ "$(id -u)" = 0 ]; then
-            "$BIN/bench-load" --workload W7 --target "$mount" --lower "$lowerroot" --queries "$out/queries.txt" --out "$d/w7" --repeat 1
+            "$BIN/bench-load" --workload W7 --target "$mount" --lower "$lowerroot" --mount-opts "$LAYER_MOUNT_OPTS" --queries "$out/queries.txt" --out "$d/w7" --repeat 1
             "$BIN/query" "$mount" info > "$d/get_info.after-w7.txt" 2>&1 || true
         fi
         sync; diskstat "$d/diskstats.after"
@@ -122,8 +123,8 @@ run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for pla
         "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --root "$mount" --queries "$out/queries.txt" --workload W8 --procs "$procs" --out "$d/w8"
         "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --root "$mount" --queries "$out/queries.txt" --workload W5 --procs "$procs" --out "$d/w5"
         if [ "$(id -u)" = 0 ]; then
-            "$BIN/bench-load" --workload W6 --target "$mount" --lower "$lowerroot" --queries "$out/queries.txt" --out "$d/w6" --repeat 1
-            "$BIN/bench-load" --workload W7 --target "$mount" --lower "$lowerroot" --queries "$out/queries.txt" --out "$d/w7" --repeat 1
+            "$BIN/bench-load" --workload W6 --target "$mount" --lower "$lowerroot" --mount-opts "$LAYER_MOUNT_OPTS" --queries "$out/queries.txt" --out "$d/w6" --repeat 1
+            "$BIN/bench-load" --workload W7 --target "$mount" --lower "$lowerroot" --mount-opts "$LAYER_MOUNT_OPTS" --queries "$out/queries.txt" --out "$d/w7" --repeat 1
         else
             log "$name: W6/W7 skipped (not root)"
         fi
