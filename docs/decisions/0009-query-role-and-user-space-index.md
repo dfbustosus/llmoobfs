@@ -1,6 +1,7 @@
 # ADR-0009 — Papel do `QUERY` e índice estruturado em espaço de usuário
 
-Data: 2026-10-11. Estado: **proposta**, sem implementação. Se aceita, substitui em parte a
+Data: 2026-10-11. Estado: **proposta**, sem implementação. Alternativa E acrescentada a pedido do
+mantenedor no mesmo dia. Se aceita, substitui em parte a
 ADR-0005 (item 3, índices mantidos pelo módulo, e a alternativa "SQLite ao lado" que ela
 rejeitou) e redefine o `QUERY` dentro do item 2 da ADR-0007. A ADR-0001 (filesystem nativo
 montável) continua valendo.
@@ -120,6 +121,21 @@ montagens com idmap, e a janela entre um `chmod` e o índice refletir a mudança
   de código. O próprio BFS do Haiku não cruza listas: escolhe uma condição por uma pontuação
   barata (tamanho do índice) e testa as demais em cada candidato, como o MoobFS faz hoje com a
   primeira.
+- **E. Índice particionado por domínio de permissão, no kernel, sem SQLite.** O índice em RAM
+  passa a ter uma partição por domínio (por exemplo, por namespace, isto é, por diretório de
+  primeiro nível escolhido na montagem). O `QUERY` passa a ser emitido sobre um descritor desse
+  diretório, não da raiz da montagem: o kernel autoriza uma vez a travessia até o diretório com as
+  credenciais do chamador e procura só na partição dele, verificando apenas `MAY_READ` em cada
+  arquivo. Somado à interseção pequena (C'), resolve os três problemas medidos sem motor de banco:
+  fecha o canal de tempo (a busca nunca percorre entradas de outros domínios), reduz o custo por
+  resultado (o caminho até o domínio já foi autorizado) e limita o crescimento por candidato ao
+  tamanho do domínio, não da montagem. Mantém o índice atualizado na mesma chamada que grava o
+  atributo e não exige processo extra. Não oferece consultas com "ou", ordenação, agregação nem
+  paginação além do limite de resultados: a linguagem continua simples por escolha. Custos:
+  nova versão da UAPI (`QUERY` sobre diretório), migração de entradas entre partições quando um
+  diretório muda de domínio por renomeação, contabilidade do orçamento por partição, e os mesmos
+  testes de isolamento, concorrência e KASAN da fase 3b. Continua sendo estrutura de dados, não
+  banco: é próximo do que o BFS fazia, com a autorização que o BFS nunca teve.
 - **D. Portar o motor de consultas do BFS do Haiku** (OpenBFS, licença MIT). Rejeitada: C++ e API
   do kernel do Haiku, ligado ao formato em disco do BFS, e resolve o mesmo problema da
   alternativa C, só que com código alheio ao Linux.
@@ -140,6 +156,24 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 | RocksDB, LevelDB | Árvores LSM, escrita intensa | Sem vantagem para leitura por atributo; mais operação |
 | DuckDB | Consultas analíticas em colunas | Pensado para agregação, não para buscas pontuais de baixa latência |
 | Xapian, Tantivy | Busca textual | Outro problema; fica com o cliente (ADR-0005, item 5) |
+
+## Comparação entre B e E
+
+| Critério | E: índice particionado no kernel | B: SQLite em espaço de usuário |
+| --- | --- | --- |
+| Canal de tempo entre domínios | Fechado | Fechado, com um índice por domínio |
+| Consultas complexas ("ou", ordenação, paginação) | Não | Sim |
+| Índice atualizado na hora | Sim, na mesma chamada | Depende do `fanotify` e de reconstruir após perda de eventos |
+| Processo extra | Nenhum | Indexador privilegiado (ou um por usuário) |
+| Código novo no kernel | Médio (partições, UAPI v2, interseção) | Pequeno (autorização em lote) |
+| ACLs | Respeitadas, como hoje | Exigem cópia ou verificação no kernel; o GUFI não resolve |
+| Coerência com a ADR-0001 | Total | Parcial: o índice deixa de ser do filesystem |
+
+Critério de escolha proposto: se as consultas que os clientes de memória reais fazem forem
+conjunções simples sobre um domínio (o padrão observado em ai-memory, Letta e mem0, a confirmar
+no M4 com o cliente real), E atende sem banco e sem processo extra; se precisarem de consultas
+ricas, B. As duas podem coexistir: E como interface do filesystem, B como camada opcional do
+cliente para consultas que E não cobre.
 
 ## O que a pesquisa acrescenta
 
@@ -169,6 +203,11 @@ do NTFS, GNOME Tracker (SQLite) e KDE Baloo (LMDB) com inotify no Linux.
 
 ## O que o M4 precisa medir para decidir
 
+- E contra A nas formas do W3 restritas a um domínio, por escala, inclusive o canal de tempo com
+  entradas de outros domínios presentes (o experimento do registro 0030), e o custo de renomear
+  um diretório entre domínios.
+- Quais consultas um cliente de memória real faz, com o cliente rodando sobre a camada: se cabem
+  em conjunções simples sobre um domínio.
 - B com SQLite contra A nas nove formas do W3, por escala, incluindo o custo da autorização em
   lote e o atraso entre gravar um atributo e o índice externo refletir a mudança.
 - Se o `fanotify` entrega todos os eventos de atributos feitos pela camada (a confirmar: as
