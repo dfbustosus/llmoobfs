@@ -46,3 +46,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0026 — Primeira tag de pre-release: v0.1.0-experimental](0026-first-prerelease-tag.md)
 - [0027 — `QUERY`: busca a partir do primeiro candidato e resultados copiados um a um](0027-query-fast-path.md)
 - [0028 — Perfil do `QUERY` e revalidação de dentry compatível com RCU-walk](0028-rcu-walk-revalidation.md)
+- [0030 — Verificações: fluxo de mudanças, Landlock e canal de tempo do `QUERY`](0030-verification-notify-landlock-timing.md)

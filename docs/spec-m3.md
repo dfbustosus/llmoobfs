@@ -89,6 +89,12 @@ política de autorização; zero vazamento entre usuários em todos os inferiore
 - `count`, `limit` e `truncated` referem-se só a resultados visíveis ao chamador. O número de
   candidatos examinados não é limitado pelo `limit`: a varredura percorre todos os candidatos
   em lotes, com retomada por chave ordenada.
+- **Canal de tempo (medido em 2026-10-11, registro 0030).** O tempo de resposta cresce cerca de
+  1,15 µs por candidato invisível ao chamador, com variação abaixo de 3%: um chamador consegue
+  estimar quantas entradas de outros donos casam com a sua consulta, e testar se algum valor
+  existe em qualquer lugar da montagem. O contrato garante que resultados e contagens
+  devolvidos não revelam entradas invisíveis; não garante isso contra medição de tempo. Fechar
+  o canal exige que a consulta não percorra entradas de outros domínios de permissão (ADR-0009).
 - Falhas de autorização omitem o resultado em silêncio. Falhas operacionais (`ENOMEM`,
   `EFAULT`) retornam erro.
 - Entradas cujo caminho registrado ficou obsoleto (diretório renomeado) são resolvidas pelo

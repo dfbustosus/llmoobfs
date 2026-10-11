@@ -144,7 +144,8 @@ Authorization per result (`caller_may_read`, phase 3b): for each candidate the r
 is resolved with `vfs_path_lookup` from the caller's own `file->f_path`, hence with the
 caller's credentials; the resolved object must belong to this mount and be the indexed inode,
 and `inode_permission(MAY_READ)` must succeed. Entries without a verifiable path are omitted.
-Unauthorized candidates are omitted silently and never counted in `count` or `truncated`;
+Unauthorized candidates are omitted silently and never counted in `count` or `truncated`
+(their scan time is still observable: about 1.15 µs per hidden candidate, journal 0030);
 operational failures (`ENOMEM`, `EFAULT`) return an error. The contract, from
 [spec-m3.md](spec-m3.md) §3.1: authorization holds at the instant of the query; a result is
 not a grant of access; the client calls `open()` normally and must accept `EACCES` or `ENOENT`
