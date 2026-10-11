@@ -12,6 +12,7 @@
  *           --pages                      follow the cursor until the answer is complete
  *           --cursor-in FILE             start from a cursor saved by --cursor-out
  *           --cursor-out FILE            save the cursor returned by the (first) call
+ *           --raw                        print in the kernel's order (no sort by ino)
  *   query <domain-dir> q2invalid                     malformed QUERY2 requests are refused
  *   query [--uid N] <dir> q2errno [opts] <terms...>  prints the errno of QUERY2 (0 on success)
  *   query [--uid N] <x> rename <old> <new>           prints the errno of rename(2) (0 on success)
@@ -84,7 +85,7 @@ int main(int argc, char **argv)
 		struct moob_query_result *all = NULL;
 		const char *cin = NULL, *cout = NULL;
 		size_t nall = 0;
-		int n, r, k = 3, pages = 0, first = 1, errmode = !strcmp(argv[2], "q2errno");
+		int n, r, k = 3, pages = 0, first = 1, raw = 0, errmode = !strcmp(argv[2], "q2errno");
 		__u32 i, limit = MOOB_QUERY_MAX_LIMIT;
 
 		memset(&q2, 0, sizeof q2);
@@ -100,6 +101,8 @@ int main(int argc, char **argv)
 				limit = (__u32)strtoul(argv[k + 1], NULL, 10); k += 2;
 			} else if (!strcmp(argv[k], "--pages")) {
 				pages = 1; k++;
+			} else if (!strcmp(argv[k], "--raw")) {
+				raw = 1; k++;
 			} else if (!strcmp(argv[k], "--cursor-in") && k + 1 < argc) {
 				cin = argv[k + 1]; k += 2;
 			} else if (!strcmp(argv[k], "--cursor-out") && k + 1 < argc) {
@@ -136,7 +139,7 @@ int main(int argc, char **argv)
 			if (!q2.truncated || !pages)
 				break;
 		}
-		if (!q2.order_by[0])
+		if (!q2.order_by[0] && !raw)
 			qsort(all, nall, sizeof *all, by_ino);
 		for (i = 0; i < nall; i++)
 			printf("%" PRIu64 "\t%s%s\n", (uint64_t)all[i].ino, all[i].path,

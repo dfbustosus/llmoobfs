@@ -341,6 +341,31 @@ run_lower() {
     [ "$($BIN/query --uid 1001 $LAYER/da q2errno --limit 3 --cursor-in /tmp/c1 kind eq string note)" = "q2 116" ] || fail "q2b-cursor-remount-$fs"
     q2ord remount-pages 30 --order title string desc --limit 7 --pages -- --order title string desc $LOWER/da
     echo "QUERY2_ORDER_PASS: $fs"
+    # leapfrog intersection of equality terms (phase Q2c): answers equal the oracle, paging
+    # works, and the plan is really taken: with a non-equality first term whose values fall
+    # as inodes rise, a plain scan would answer in falling inode order, the intersection in
+    # rising inode order
+    for i in $(seq 1 30); do
+        f=$LAYER/da/o$i.md
+        $BIN/moobfs-attr set $f ns string n$((i % 3)) >/dev/null &&
+        $BIN/moobfs-attr set $f agent int64 $((i % 5)) >/dev/null &&
+        $BIN/moobfs-attr set $f rank string r$((100 - i)) >/dev/null || fail "q2c-attr-$fs"
+    done
+    q2ord leap2 2 ns eq string n1 agent eq int64 2 -- $LOWER/da ns eq string n1 agent eq int64 2
+    q2ord leap3 1 ns eq string n1 agent eq int64 2 kind eq string note -- $LOWER/da ns eq string n1 agent eq int64 2 kind eq string note
+    q2ord leap-mixed 2 rank exists x x ns eq string n1 agent eq int64 2 -- $LOWER/da rank exists x x ns eq string n1 agent eq int64 2
+    q2ord leap-range 1 ns eq string n1 created ge time 7000 agent eq int64 2 -- $LOWER/da ns eq string n1 created ge time 7000 agent eq int64 2
+    q2ord leap-none 0 ns eq string n1 agent eq int64 7 -- $LOWER/da ns eq string n1 agent eq int64 7
+    q2ord leap-type 0 ns eq string n1 agent eq string 2 -- $LOWER/da ns eq string n1 agent eq string 2
+    q2ord leap-pages 5 --limit 2 --pages ns eq string n1 kind eq string note -- $LOWER/da ns eq string n1 kind eq string note
+    q2ord leap-pages1 5 --limit 1 --pages kind eq string note ns eq string n1 -- $LOWER/da kind eq string note ns eq string n1
+    $BIN/query --uid 1001 $LAYER/da q2 --raw rank exists x x ns eq string n1 kind eq string note | cut -f1 > /tmp/raw.txt || fail "q2c-raw-$fs"
+    [ "$(wc -l < /tmp/raw.txt)" -eq 5 ] || fail "q2c-raw-count-$fs"
+    sort -n -c /tmp/raw.txt || { cat /tmp/raw.txt; fail "q2c-plan-not-leapfrog-$fs"; }
+    q2ord single-eq 10 rank exists x x ns eq string n1 -- $LOWER/da rank exists x x ns eq string n1
+    chmod 0700 $LAYER/da/sub || fail "q2c-fallback-$fs"
+    q2ord leap-fallback 5 --limit 2 --pages ns eq string n1 kind eq string note -- $LOWER/da ns eq string n1 kind eq string note
+    echo "QUERY2_LEAPFROG_PASS: $fs"
     echo "kind eq string note" > /tmp/q2q.txt
     $BIN/bench-load --workload W3 --target $LAYER/da --root $LAYER/da --query2 1 --uid 1001 --queries /tmp/q2q.txt --repeat 3 --out /tmp/q2w3 || fail "q2-bench-w3-$fs"
     rm -rf $LAYER/da $LAYER/db $LAYER/dshared || fail "q2-cleanup-$fs"
