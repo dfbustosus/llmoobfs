@@ -133,6 +133,13 @@ por consulta. União e remoção de duplicatas ficam com o cliente. Cobre o "ou"
   de cada valor; os demais termos são testados em cada inode da interseção.
 - Nos outros casos: varredura do primeiro termo sem `MISSING_OK`, como na v1 corrigida.
 
+**Implementação Q2c (2026-10-11, registro 0037).** A interseção vale para o `QUERY2` sem
+`order_by` com dois ou mais termos `EQ`; a v1 continua com a varredura do primeiro termo, para
+servir de base de comparação. O primeiro termo `EQ`, na ordem do pedido, conduz: os resultados
+saem em ordem de inode e o cursor guarda o valor desse termo com o último inode. Cada passo é
+uma busca logarítmica na árvore de cada termo, até todos chegarem ao mesmo inode; os demais
+termos (inclusive os `EQ`, por simplicidade) são testados só nos inodes da interseção.
+
 ### 4.5 A v1
 
 **[decisão aceita]** Proposta: `MOOB_IOC_QUERY` (v1) sobre a raiz continua existindo, com a semântica

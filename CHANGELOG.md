@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Phase Q2c (journal 0037): `QUERY2` without `order_by` intersects two or more equality
+  terms by leapfrog over their inode-ordered runs instead of scanning the first term. Test
+  client `--raw` prints the kernel's order.
 - Phase Q2b (journal 0036): `QUERY2` orders by an attribute (`order_by`, `order`,
   `order_type`, ties by inode) and pages with an authenticated 128-byte cursor (`ESTALE` for
   a cursor from another query or mount, corrupt, or issued before a fallback). Oracle
