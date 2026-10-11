@@ -25,10 +25,13 @@ de 2026-10-11 no host da Azure):
   resolução de caminho com as credenciais do chamador.
 - Consultas com mais de uma condição: o `QUERY` só busca pela primeira condição e testa as
   demais em cada candidato, a cerca de 1 µs por candidato. O tempo cresce com o tamanho do
-  conjunto: na forma `namespace = X AND agent = Y`, 34 µs com 1000 memórias, 457 µs com 5000 e
-  1,1 ms com 10 000, contra 15, 24 e 33 µs no SQLite.
+  conjunto: na forma `namespace = X AND agent = Y`, 34 µs com 1000 memórias, 1,1 ms com 10 000
+  e 6,95 ms com 60 000, contra 15, 33 e 392 µs no SQLite (registro 0029), ou seja, de 2 a 18 vezes
+  mais lento conforme o tamanho.
 - Limite da UAPI v1: no máximo 4096 resultados por chamada, sem paginação; com 10 000 memórias
-  uma das nove formas já é truncada.
+  uma das nove formas já é truncada, e com 40 000 ou mais, cinco das nove.
+- Índice: 600 bytes contabilizados por memória com 8 atributos (36 MB com 60 000); reconstrução
+  na montagem de cerca de 19 µs por memória.
 
 Fechar essas diferenças dentro do kernel exigiria escolher a condição mais seletiva, cruzar
 candidatos, manter estatísticas, índices compostos e paginação: um planejador de consultas. Isso
