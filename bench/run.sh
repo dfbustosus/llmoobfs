@@ -49,7 +49,7 @@ log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$out/run.log"; }
     echo "kernel: $(uname -srm)"
     echo "cpu: $(grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | sed 's/^ //')  cores: $(nproc 2>/dev/null || echo ?)"
     echo "memory: $(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2 " kB"}')"
-    echo "kvm: $([ -e /dev/kvm ] && echo present || echo absent)"
+    echo "kvm: $([ -e /dev/kvm ] && echo present || echo absent)  (host virtualization: $(systemd-detect-virt 2>/dev/null || echo unknown))"
     echo "sqlite: $($SQLITE --version 2>/dev/null | cut -d' ' -f1-2 || echo absent)"
     echo "scale: $scale profile: $profile reps: $reps seed: $seed procs: $procs w3_repeat: $W3_REPEAT w3_uid: $W3_UID"
     echo "systems: plain=[$plain ] layer=[$layer ]"

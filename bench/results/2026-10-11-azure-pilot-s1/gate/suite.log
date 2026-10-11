@@ -1,0 +1,71 @@
+mount: /mnt/moob-layer: wrong fs type, bad option, bad superblock on none, missing codepage or helper program, or other error.
+       dmesg(1) may have more information after failed mount system call.
+mount: /mnt/moob-layer: wrong fs type, bad option, bad superblock on none, missing codepage or helper program, or other error.
+       dmesg(1) may have more information after failed mount system call.
+mount: /mnt: wrong fs type, bad option, bad superblock on none, missing codepage or helper program, or other error.
+       dmesg(1) may have more information after failed mount system call.
+LAYER_PASSTHROUGH_TESTS_PASS
+QUERY_INVALID_REQUESTS_REFUSED
+IDMAP_REFUSED_EINVAL
+USERNS_MOUNT_REFUSED_EPERM
+race: 12844 queries, 578832 openable results, 7043 vanished, 405 denied after answer
+ISOLATION_PASS: ext4
+wal
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 1
+BENCH_LAYER_PASS: ext4
+All 5000 operations completed A-OK!
+All 3000 operations completed A-OK!
+All 1000 operations completed A-OK!
+LAYER_PASSTHROUGH_TESTS_PASS
+LAYER_LOWER_PASS: ext4 reflink=no
+mount: /mnt: wrong fs type, bad option, bad superblock on none, missing codepage or helper program, or other error.
+       dmesg(1) may have more information after failed mount system call.
+LAYER_PASSTHROUGH_TESTS_PASS
+QUERY_INVALID_REQUESTS_REFUSED
+IDMAP_REFUSED_EINVAL
+USERNS_MOUNT_REFUSED_EPERM
+race: 12679 queries, 571740 openable results, 6913 vanished, 215 denied after answer
+ISOLATION_PASS: btrfs
+wal
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 1
+BENCH_LAYER_PASS: btrfs
+All 5000 operations completed A-OK!
+All 3000 operations completed A-OK!
+All 1000 operations completed A-OK!
+LAYER_PASSTHROUGH_TESTS_PASS
+LAYER_LOWER_PASS: btrfs reflink=yes
+mount: /mnt: wrong fs type, bad option, bad superblock on none, missing codepage or helper program, or other error.
+       dmesg(1) may have more information after failed mount system call.
+LAYER_PASSTHROUGH_TESTS_PASS
+QUERY_INVALID_REQUESTS_REFUSED
+IDMAP_REFUSED_EINVAL
+USERNS_MOUNT_REFUSED_EPERM
+race: 12936 queries, 583223 openable results, 7257 vanished, 363 denied after answer
+ISOLATION_PASS: xfs
+wal
+EQUIV_PASS: 9 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 1
+BENCH_LAYER_PASS: xfs
+All 5000 operations completed A-OK!
+All 3000 operations completed A-OK!
+All 1000 operations completed A-OK!
+LAYER_PASSTHROUGH_TESTS_PASS
+LAYER_LOWER_PASS: xfs reflink=yes
+SQLITE_RESULT lower-wal: rows=200 integrity=ok reads=1256 missing=[]
+SQLITE_RESULT layer-wal-alone: rows=200 integrity=ok reads=0 missing=[]
+SQLITE_RESULT layer-wal: rows=200 integrity=ok reads=1255 missing=[]
+SQLITE_RESULT layer-rollback: rows=200 integrity=ok reads=17 missing=[]
+SQLITE_RESULT layer-wal-unix-excl: rows=200 integrity=ok reads=14 missing=[]
+SQLITE_RESULT layer-wal-again: rows=200 integrity=ok reads=1247 missing=[]
+SQLITE_VARIANTS: lower=0 alone=0 layer=0 rollback=0 excl=0 again=0
+SQLITE_CONCURRENT_OK
+ACCEPTANCE_CLIENTS_PASS
+Udev is running and DM_DISABLE_UDEV environment variable is set. Bypassing udev, device-mapper library will manage device nodes in device directory.
+Udev is running and DM_DISABLE_UDEV environment variable is set. Bypassing udev, device-mapper library will manage device nodes in device directory.
+POWER_LOSS_REPLAY_PASS: marks mkfs m1 m2 m4 end
+Udev is running and DM_DISABLE_UDEV environment variable is set. Bypassing udev, device-mapper library will manage device nodes in device directory.
+Udev is running and DM_DISABLE_UDEV environment variable is set. Bypassing udev, device-mapper library will manage device nodes in device directory.
+Udev is running and DM_DISABLE_UDEV environment variable is set. Bypassing udev, device-mapper library will manage device nodes in device directory.
+Udev is running and DM_DISABLE_UDEV environment variable is set. Bypassing udev, device-mapper library will manage device nodes in device directory.
+IO_ERROR_INJECTION_PASS
+MOOBFS_ACCEPTANCE_PASS: git, sqlite wal, memory client, dm-log-writes replay, dm-flakey
+MOOBFS_LAYER_PASS: pass-through over ext4, btrfs and xfs; layer tests; typed attributes and tools; index and QUERY equal to the oracle; fsx 9000 ops each; reflink on btrfs/xfs; nolinks; unload

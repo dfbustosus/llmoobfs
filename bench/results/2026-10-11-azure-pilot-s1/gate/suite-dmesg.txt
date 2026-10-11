@@ -1,0 +1,69 @@
+[  111.886234] moobfs_layer: loading out-of-tree module taints kernel.
+[  111.886240] moobfs_layer: module verification failed: signature and/or required key missing - tainting kernel
+[  111.888243] moobfs_layer: lower= is required
+[  111.892919] moobfs_layer: cannot resolve lower directory
+[  111.909081] EXT4-fs (sda): mounted filesystem 03270bb0-2b5b-4a78-bef3-199472e4b984 r/w with ordered data mode. Quota mode: none.
+[  111.923845] moobfs_layer: lower cannot be another moobfs_layer mount
+[  121.993859] bench-load (12257): drop_caches: 3
+[  122.054292] bench-load (12257): drop_caches: 3
+[  123.872559] bench-load (13133): drop_caches: 3
+[  129.066307] EXT4-fs (sda): unmounting filesystem 03270bb0-2b5b-4a78-bef3-199472e4b984.
+[  129.075962] BTRFS: device label moob-lower devid 1 transid 6 /dev/sdb (8:16) scanned by mount (13160)
+[  129.079870] BTRFS info (device sdb): first mount of filesystem 3801890c-846c-4ede-8517-f73dcf6d9987
+[  129.079887] BTRFS info (device sdb): using crc32c (crc32c-intel) checksum algorithm
+[  129.098657] BTRFS info (device sdb): checking UUID tree
+[  129.098723] BTRFS info (device sdb): turning on async discard
+[  129.098727] BTRFS info (device sdb): enabling free space tree
+[  129.102746] moobfs_layer: lower cannot be another moobfs_layer mount
+[  139.408887] bench-load (23135): drop_caches: 3
+[  139.441363] bench-load (23135): drop_caches: 3
+[  140.592578] bench-load (24012): drop_caches: 3
+[  145.643511] BTRFS info (device sdb): last unmount of filesystem 3801890c-846c-4ede-8517-f73dcf6d9987
+[  145.875170] SGI XFS with ACLs, security attributes, realtime, quota, no debug enabled
+[  145.886138] XFS (sdc): Mounting V5 Filesystem d5a4ea30-0279-42e7-b3f2-122e1a25318d
+[  145.960257] XFS (sdc): Ending clean mount
+[  145.976404] moobfs_layer: lower cannot be another moobfs_layer mount
+[  154.755114] bench-load (34106): drop_caches: 3
+[  154.781691] bench-load (34106): drop_caches: 3
+[  156.227214] bench-load (34982): drop_caches: 3
+[  164.928765] XFS (sdc): Unmounting Filesystem d5a4ea30-0279-42e7-b3f2-122e1a25318d
+[  164.953753] EXT4-fs (sda): mounted filesystem 03270bb0-2b5b-4a78-bef3-199472e4b984 r/w with ordered data mode. Quota mode: none.
+[  177.757178] EXT4-fs (sda): unmounting filesystem 03270bb0-2b5b-4a78-bef3-199472e4b984.
+[  178.426180] EXT4-fs (dm-0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab r/w with ordered data mode. Quota mode: none.
+[  178.664930] EXT4-fs (dm-0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  178.896950] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab r/w with ordered data mode. Quota mode: none.
+[  178.900532] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  178.917813] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab ro with ordered data mode. Quota mode: none.
+[  178.925003] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  179.137132] EXT4-fs (loop0): recovery complete
+[  179.139460] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab r/w with ordered data mode. Quota mode: none.
+[  179.141185] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  179.150372] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab ro with ordered data mode. Quota mode: none.
+[  179.158739] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  179.439481] EXT4-fs (loop0): recovery complete
+[  179.442063] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab r/w with ordered data mode. Quota mode: none.
+[  179.443681] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  179.455357] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab ro with ordered data mode. Quota mode: none.
+[  179.465481] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  179.740902] EXT4-fs (loop0): recovery complete
+[  179.746312] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab r/w with ordered data mode. Quota mode: none.
+[  179.748497] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  179.758908] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab ro with ordered data mode. Quota mode: none.
+[  179.775263] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  180.044932] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab r/w with ordered data mode. Quota mode: none.
+[  180.048723] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  180.074635] EXT4-fs (loop0): mounted filesystem a3c118aa-8e04-4232-b28b-6277599d77ab ro with ordered data mode. Quota mode: none.
+[  180.088805] EXT4-fs (loop0): unmounting filesystem a3c118aa-8e04-4232-b28b-6277599d77ab.
+[  180.612229] EXT4-fs (dm-0): mounted filesystem e26d9730-8060-48c7-a9e0-c166ee9285ea r/w with ordered data mode. Quota mode: none.
+[  180.701675] Buffer I/O error on dev dm-0, logical block 0, lost sync page write
+[  180.705631] EXT4-fs (dm-0): I/O error while writing superblock
+[  180.710144] Aborting journal on device dm-0-8.
+[  180.711499] Buffer I/O error on dev dm-0, logical block 32801, lost sync page write
+[  180.713573] JBD2: I/O error when updating journal superblock for dm-0-8.
+[  180.715635] EXT4-fs error (device dm-0) in __ext4_new_inode:1100: IO failure
+[  180.717656] EXT4-fs error (device dm-0) in ext4_create:2855: IO failure
+[  180.719621] Buffer I/O error on dev dm-0, logical block 0, lost sync page write
+[  180.721530] EXT4-fs (dm-0): I/O error while writing superblock
+[  180.755250] EXT4-fs (dm-0): unmounting filesystem e26d9730-8060-48c7-a9e0-c166ee9285ea.
+[  180.817222] EXT4-fs (loop0): mounted filesystem e26d9730-8060-48c7-a9e0-c166ee9285ea r/w with ordered data mode. Quota mode: none.
+[  180.831798] EXT4-fs (loop0): unmounting filesystem e26d9730-8060-48c7-a9e0-c166ee9285ea.
