@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Dentry revalidation now answers in RCU-walk for the plain case instead of always forcing
+  ref-walk, so path walks through the layer stay lockless (journal 0028).
+
 ## v0.1.0-experimental — 2026-10-10
 
 First pre-release tag: a source snapshot of M1, M2 (phases 2a–2e), M3 phase 3b and the M4
