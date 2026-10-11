@@ -1,7 +1,7 @@
 # 0032 — Experiência do desenvolvedor no GitHub: plano e lote 1
 
-Data: 2026-10-11. Branch: `community/dx-batch1` a partir de `main` (`1d23b43`). Estado: arquivos
-do lote 1 concluídos; configurações no GitHub pendentes de execução pelo mantenedor (ver
+Data: 2026-10-11. Branch: `community/dx-batch1` a partir de `main` (`1d23b43`). Estado: lote 1
+concluído; as configurações no GitHub foram aplicadas pelo mantenedor (ver as notas em
 Limitações).
 
 ## Objetivo
@@ -91,12 +91,16 @@ Nota de 2026-10-11: no PR #27, o job `Lint` (com `make lint` e o `shellcheck` do
 Nota de 2026-10-11: renumerado de 0031 para 0032 ao trazer `main` para a branch, porque o
 registro 0031 (tempo de remontagem) entrou em `main` antes. Os labels `good first issue` e
 `help wanted` e as issues fixadas (#16, #17, #5) foram aplicados pelo mantenedor; conferido com
-`gh issue list --label` e a consulta GraphQL `pinnedIssues`. A discussão de boas-vindas continua
-pendente.
+`gh issue list --label` e a consulta GraphQL `pinnedIssues`.
+
+Nota de 2026-10-11: o mantenedor publicou e fixou a discussão de boas-vindas
+[#29](https://github.com/studiomoob/llmoobfs/discussions/29), "Welcome to MoobFS — start here",
+em Announcements. Conferido com a consulta GraphQL `pinnedDiscussions`. Com isso, todos os itens
+do lote 1 estão aplicados. No PR #27, depois do merge de `main`, os jobs `Lint`, `Tools and
+sanitizers` e `Native Linux VM` passaram.
 
 ## Próximo passo
 
-Abrir o pull request, observar o job `Lint` com `make lint` e, depois do merge, publicar a
-discussão de boas-vindas. Lote 2: devcontainer e Codespaces com medição de tempo e disco de `make
+Merge do PR #27. Lote 2: devcontainer e Codespaces com medição de tempo e disco de `make
 vm-test`, OpenSSF Scorecard, CodeQL, `checkpatch.pl` como aviso, labeler e mensagem de
 primeira contribuição.
