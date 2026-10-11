@@ -81,7 +81,8 @@ query_sql() {
         shift 4
     done
     [ $# -eq 0 ] && [ -n "$where" ] || { echo "sqlbase: bad query line" >&2; return 1; }
-    echo "SELECT ino FROM memories WHERE $where ORDER BY ino;"
+    # ino and path: the same data a QUERY result carries
+    echo "SELECT ino, path FROM memories WHERE $where ORDER BY ino;"
 }
 
 cmd=${1:-}; shift || true

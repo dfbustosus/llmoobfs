@@ -23,6 +23,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 sib() { if [ -e "$here/$1" ]; then echo "$here/$1"; else echo "$here/bench-$1"; fi; }
 SQLBASE=$(sib sqlbase.sh); EQUIV=$(sib equiv.sh); QUERIES=$(sib queries-w3.txt); REPORT=$(sib report.py)
 out=""; scale=1000; profile=8; reps=3; seed=1; procs=4
+W3_REPEAT=${W3_REPEAT:-50}       # executions of every W3 shape per repetition
+W3_UID=${W3_UID:-65534}          # regular user for the authorization measurement (nobody)
 plain=""; layer=""
 while [ $# -gt 0 ]; do
     case $1 in
@@ -49,7 +51,7 @@ log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$out/run.log"; }
     echo "memory: $(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2 " kB"}')"
     echo "kvm: $([ -e /dev/kvm ] && echo present || echo absent)"
     echo "sqlite: $($SQLITE --version 2>/dev/null | cut -d' ' -f1-2 || echo absent)"
-    echo "scale: $scale profile: $profile reps: $reps seed: $seed procs: $procs"
+    echo "scale: $scale profile: $profile reps: $reps seed: $seed procs: $procs w3_repeat: $W3_REPEAT w3_uid: $W3_UID"
     echo "systems: plain=[$plain ] layer=[$layer ]"
     echo "commit: $(git -C "$here/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
 } > "$out/environment.txt"
@@ -57,7 +59,8 @@ log "environment recorded in $out/environment.txt"
 
 "$BIN/bench-gen" --seed "$seed" --inodes "$scale" --profile "$profile" --out "$out/manifest.txt"
 grep -v '^#' "$QUERIES" > "$out/queries.txt"
-[ "$profile" -eq 16 ] || sed -i.bak '/^tag1 /d' "$out/queries.txt"   # Q8 needs tag1 (profile 16)
+# Q8 uses tag1, which exists only in profile 16; the line is kept so shape numbers stay Q1..Q9
+# (on other profiles Q8 matches nothing in every system, which the equivalence check confirms)
 while read -r q; do sh "$SQLBASE" sql $q; done < "$out/queries.txt" > "$out/queries.sql"   # SQL of the same shapes
 log "manifest: $scale memories, profile $profile; $(wc -l < "$out/queries.txt" | tr -d ' ') query shapes"
 
@@ -83,10 +86,14 @@ run_system() {   # $1 rep dir, $2 name, $3 target dir, $4 mount root ("" for pla
     tail -1 "$d/equiv.txt" | tee -a "$out/run.log"
     "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W2 --procs "$procs" --out "$d/w2"
     if [ -n "$mount" ]; then
-        "$BIN/bench-load" --queries "$out/queries.txt" --target "$target" --root "$mount" --workload W3 --out "$d/w3"
+        "$BIN/bench-load" --queries "$out/queries.txt" --target "$target" --root "$mount" --workload W3 --repeat "$W3_REPEAT" --out "$d/w3"
+        # the same shapes as a regular user: every result goes through a real permission check;
+        # recorded as a separate system "<name>+u" so the report keeps both
+        mkdir -p "$rep/$name+u"
+        "$BIN/bench-load" --queries "$out/queries.txt" --target "$target" --root "$mount" --workload W3 --repeat "$W3_REPEAT" --uid "$W3_UID" --out "$rep/$name+u/w3"
     else
         # W3 on a baseline: the same shapes through the SQLite library (bench/sqlclient)
-        "$BIN/bench-sqlclient" --db "$d/base.db" --sql "$out/queries.sql" --out "$d/w3"
+        "$BIN/bench-sqlclient" --db "$d/base.db" --sql "$out/queries.sql" --repeat "$W3_REPEAT" --out "$d/w3"
     fi
     "$BIN/bench-load" --manifest "$out/manifest.txt" --target "$target" --workload W4 --procs "$procs" --out "$d/w4"
     if [ -n "$mount" ]; then

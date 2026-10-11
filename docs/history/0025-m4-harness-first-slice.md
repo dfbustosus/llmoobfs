@@ -194,3 +194,24 @@ inclui o `fsync`; `bench/calibrate.sh` passa a extrair a latência do `fsync` do
 Decisão: a campanha que alimenta o relatório usa discos Premium SSD v2 com IOPS e vazão fixos,
 porque o bursting por créditos dos P1–P20 mudaria a velocidade do dispositivo ao longo de horas;
 os P6 atuais valem para o portão e o piloto.
+
+## Piloto no host da Azure e correções do harness (2026-10-11)
+
+Piloto (`run.sh --scale 1000 --profile 8 --reps 3 --procs 4`, seis sistemas: A-ext4,
+B-btrfs, X-xfs sem camada e C-ext4, C-btrfs, C-xfs com a camada, cada par no mesmo disco P6
+com bursting). Rodou inteiro, sem erros, com equivalência em todas as formas. Serve para validar
+o procedimento, não para concluir. Sinais a confirmar na campanha: W1 dominado pelo `fsync` do
+disco e praticamente igual com e sem camada; W2 e W4 com acréscimo de alguns microssegundos por
+operação na camada; W3 com o `QUERY` cerca de oito vezes mais lento que o SQLite com índice
+composto na mediana. Os artefatos estão no host (`build/bench/pilot-s1/`) e ainda não foram
+copiados para o repositório; os números acima não são resultado do M4.
+
+O piloto expôs três defeitos de método no W3, corrigidos antes da campanha: cada forma rodava
+uma vez por repetição (agora `--repeat`, padrão 50 em `run.sh`); os registros não separavam as
+formas (o código de operação agora carrega o número da forma, Q1–Q9, e o relatório mostra uma
+linha por forma com a mediana de resultados devolvidos); e a comparação não era equivalente
+(o SQLite passa a devolver `ino` e `path`, como o `QUERY`, e o `QUERY` também é medido como
+usuário comum, `--uid 65534`, registrado como sistema `<nome>+u`, para separar o custo da
+autorização por resultado, como o plano pede). A forma Q8 deixa de ser removida nos perfis sem
+`tag1`, para que a numeração fique estável; nesses perfis ela não casa nada em nenhum sistema.
+Validado com `make bench-smoke` em contêiner e `make vm-test` (`BENCH_LAYER_PASS` nos três).

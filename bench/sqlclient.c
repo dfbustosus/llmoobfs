@@ -58,13 +58,16 @@ int main(int argc, char **argv)
 		size_t cap = 0;
 
 		if (!f) { perror(sqlf); rc = 1; break; }
+		int shape = 0;
+
 		while (getline(&line, &cap, f) > 0) {
 			sqlite3_stmt *st;
-			struct bench_rec rec = { .workload = 3, .op = BENCH_OP_QUERY, .proc = 0 };
+			struct bench_rec rec = { .workload = 3, .proc = 0 };
 			int32_t count = 0;
 			int step;
 
 			if (line[0] == '#' || line[0] == '\n') continue;
+			rec.op = BENCH_QUERY_OP(++shape);
 			rec.start_ns = now_ns();
 			if (sqlite3_prepare_v2(h, line, -1, &st, NULL) != SQLITE_OK) {
 				rec.result = -EINVAL;
