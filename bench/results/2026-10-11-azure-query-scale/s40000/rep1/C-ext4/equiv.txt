@@ -1,0 +1,21 @@
+equiv: query 1 (kind eq string note): SQLite plan is a SCAN; a measurement must justify it or add an index (§4.1)
+EQUIV_SCAN 1
+equiv: query 1 (kind eq string note): kernel answer truncated at the UAPI limit; 16287 matches
+EQUIV_TRUNCATED 1
+equiv: query 2 (kind eq string decision score gt int64 500): kernel answer truncated at the UAPI limit; 4123 matches
+EQUIV_TRUNCATED 2
+equiv: query 3: 164 inodes, sets agree, SQLite plan SEARCH
+equiv: query 4: 683 inodes, sets agree, SQLite plan SEARCH
+equiv: query 5 (pinned eq bool 1 score lt int64 500): SQLite plan is a SCAN; a measurement must justify it or add an index (§4.1)
+EQUIV_SCAN 5
+equiv: query 5: 1954 inodes, sets agree, SQLite plan SCAN
+equiv: query 6 (kind prefix string de): kernel answer truncated at the UAPI limit; 8132 matches
+EQUIV_TRUNCATED 6
+equiv: query 7 (score ge int64 250 score le int64 750): kernel answer truncated at the UAPI limit; 20123 matches
+EQUIV_TRUNCATED 7
+equiv: query 8: 0 inodes, sets agree, SQLite plan SEARCH
+equiv: query 9 (weight exists - -): SQLite plan is a SCAN; a measurement must justify it or add an index (§4.1)
+EQUIV_SCAN 9
+equiv: query 9 (weight exists - -): kernel answer truncated at the UAPI limit; 12008 matches
+EQUIV_TRUNCATED 9
+EQUIV_PASS: 4 shapes (kernel, SQLite, oracle); SQLite SCAN plans to justify: 3; kernel answers truncated at the UAPI limit: 5

@@ -1,0 +1,30 @@
+A-ext4 W1 create: n=5000 err=0 p50=10384.3us p99=24527.2us
+A-ext4 W3 query:Q1: n=50 err=0 results=2023 p50=405.0us p99=861.1us
+A-ext4 W3 query:Q2: n=50 err=0 results=529 p50=268.1us p99=339.8us
+A-ext4 W3 query:Q3: n=50 err=0 results=20 p50=23.9us p99=36.1us INCONCLUSIVE
+A-ext4 W3 query:Q4: n=50 err=0 results=91 p50=55.7us p99=71.7us
+A-ext4 W3 query:Q5: n=50 err=0 results=258 p50=281.3us p99=307.5us
+A-ext4 W3 query:Q6: n=50 err=0 results=1021 p50=499.4us p99=532.2us
+A-ext4 W3 query:Q7: n=50 err=0 results=2537 p50=1206.7us p99=1311.8us
+A-ext4 W3 query:Q8: n=50 err=0 results=0 p50=22.6us p99=34.8us
+A-ext4 W3 query:Q9: n=50 err=0 results=1542 p50=355.9us p99=383.3us
+C-ext4 W1 create: n=5000 err=0 p50=10451.7us p99=23371.5us
+C-ext4 W3 query:Q1: n=50 err=0 results=2023 p50=4310.3us p99=4880.2us
+C-ext4 W3 query:Q2: n=50 err=0 results=529 p50=1460.9us p99=1702.2us
+C-ext4 W3 query:Q3: n=50 err=0 results=20 p50=456.5us p99=544.3us
+C-ext4 W3 query:Q4: n=50 err=0 results=91 p50=500.1us p99=592.1us
+C-ext4 W3 query:Q5: n=50 err=0 results=258 p50=676.3us p99=758.1us
+C-ext4 W3 query:Q6: n=50 err=0 results=1021 p50=2054.1us p99=2289.1us
+C-ext4 W3 query:Q7: n=50 err=0 results=2537 p50=6494.5us p99=7103.1us
+C-ext4 W3 query:Q8: n=50 err=0 results=0 p50=5.6us p99=8.4us INCONCLUSIVE
+C-ext4 W3 query:Q9: n=50 err=0 results=1542 p50=3110.6us p99=3368.7us
+C-ext4 W7 mount: n=1 err=0 p50=89396.9us p99=89396.9us
+C-ext4+u W3 query:Q1: n=50 err=0 results=2023 p50=4339.0us p99=4759.5us
+C-ext4+u W3 query:Q2: n=50 err=0 results=529 p50=1449.0us p99=1674.8us
+C-ext4+u W3 query:Q3: n=50 err=0 results=20 p50=450.8us p99=533.3us
+C-ext4+u W3 query:Q4: n=50 err=0 results=91 p50=492.9us p99=586.7us
+C-ext4+u W3 query:Q5: n=50 err=0 results=258 p50=671.5us p99=752.8us
+C-ext4+u W3 query:Q6: n=50 err=0 results=1021 p50=2064.3us p99=2267.0us
+C-ext4+u W3 query:Q7: n=50 err=0 results=2537 p50=6475.1us p99=7090.2us
+C-ext4+u W3 query:Q8: n=50 err=0 results=0 p50=5.4us p99=6.7us
+C-ext4+u W3 query:Q9: n=50 err=0 results=1542 p50=3112.9us p99=3414.3us
