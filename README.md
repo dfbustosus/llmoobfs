@@ -11,6 +11,7 @@ Research project, not for production. First pre-release tag: `v0.1.0-experimenta
 
 [![CI](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml/badge.svg)](https://github.com/studiomoob/llmoobfs/actions/workflows/ci.yml)
 [![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-blue)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/studiomoob/llmoobfs/badge)](https://scorecard.dev/viewer/?uri=github.com/studiomoob/llmoobfs)
 
 > **Experimental status. Pre-release tag only (`v0.1.0-experimental`), not for production use.** Facts verified in this
 > repository as of 2026-10-10:
