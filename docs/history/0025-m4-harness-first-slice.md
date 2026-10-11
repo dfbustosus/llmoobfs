@@ -262,3 +262,11 @@ por resultado e fica como custo declarado, a ser medido de novo depois das corre
 do baseline prepara a instrução a cada chamada, o que o torna um pouco mais lento do que uma
 aplicação que reutiliza instruções preparadas; a comparação, portanto, não favorece o SQLite.
 Os pilotos 1 e 2 ficam como registro do estado anterior às correções.
+
+Nota de 2026-10-11: a primeira tentativa do piloto 4 (com a revalidação RCU do registro 0028)
+abortou na equivalência do sistema C-ext4: o `QUERY` devolveu 291 resultados a mais na forma
+Q9 do que o oráculo. A causa foi um conjunto de 1000 memórias deixado em
+`/srv/moob/layer-ext4/prof` pelo perfil do registro 0028; o `QUERY` responde sobre a montagem
+inteira, enquanto o oráculo e o SQLite olham só `bench/`. Nenhum número foi produzido. A pasta
+foi removida e o piloto refeito; `run.sh` passou a recusar começar se a raiz de uma camada
+contiver algo além de `bench/`.

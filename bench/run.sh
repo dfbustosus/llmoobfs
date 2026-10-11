@@ -69,8 +69,11 @@ log "manifest: $scale memories, profile $profile; $(wc -l < "$out/queries.txt" |
 # equivalence check; refuse to start instead of measuring a contaminated tree
 for spec in $layer; do
     rest=${spec#*=}; mnt=${rest%%:*}
-    extra=$(ls -A "$mnt" | grep -vx bench || true)
-    [ -z "$extra" ] || { echo "run.sh: $mnt must contain nothing but bench/ (found: $(echo "$extra" | tr '\n' ' '))" >&2; exit 1; }
+    for entry in "$mnt"/* "$mnt"/.[!.]*; do
+        [ -e "$entry" ] || continue
+        [ "${entry##*/}" = bench ] && continue
+        echo "run.sh: $mnt must contain nothing but bench/ (found ${entry##*/})" >&2; exit 1
+    done
 done
 
 diskstat() { cat /proc/diskstats > "$1" 2>/dev/null || true; }
