@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Phase Q2b (journal 0036): `QUERY2` orders by an attribute (`order_by`, `order`,
+  `order_type`, ties by inode) and pages with an authenticated 128-byte cursor (`ESTALE` for
+  a cursor from another query or mount, corrupt, or issued before a fallback). Oracle
+  `--order`/`--limit`, test client paging, `bench-load --order/--limit`.
 - Phase Q2a of the domain-scoped QUERY (`docs/spec-query-v2.md`, journal 0035): mount option
   `domain_depth` (default 1, 0 keeps the previous behaviour); the RAM index is partitioned by
   domain and by the homogeneity rule; `MOOB_IOC_QUERY2` on a domain directory answers from its
