@@ -2,13 +2,22 @@
 
 ## Unreleased
 
-- Contributor tooling, batch 2 (plan `docs/dx-plan.md`, journal 0035): `.devcontainer/`
+- Contributor tooling, batch 2 (plan `docs/dx-plan.md`, journal 0039): `.devcontainer/`
   (Ubuntu 24.04, docker-in-docker, host tools; not yet advertised, the Codespaces measurement
   of `make vm-test` is pending); OpenSSF Scorecard workflow and README badge; CodeQL for the
   user-space C (`tools/`, `common/`, `bench/`); `make checkpatch` (`checkpatch.pl --no-tree`
   on `layer/` and `kernel/`, script pinned to `v6.12.112` and verified by SHA-256), advisory
   in the CI `Lint` job; `area/*` labels on pull requests by path (`.github/labeler.yml`) and a
   greeting on a person's first issue and first pull request; Dependabot for the devcontainer.
+- Phase Q2a of the domain-scoped QUERY (`docs/spec-query-v2.md`, journal 0035): mount option
+  `domain_depth` (default 1, 0 keeps the previous behaviour); the RAM index is partitioned by
+  domain and by the homogeneity rule; `MOOB_IOC_QUERY2` on a domain directory answers from its
+  partition with one permission check per call; `GET_INFO` reports `domain_depth`,
+  `heterogeneous` and `fallback_domains` (flag `MOOB_FLAG_DOMAINS`) in former reserved space;
+  the v1 `QUERY` needs `CAP_SYS_ADMIN` while domains are on; a directory renamed across
+  domains or depths gets `EXDEV`. `moobfs-index --domain`, `query q2|q2errno|q2invalid|rename`,
+  `bench-load --query2 1` and `--mount-opts`, and `bench/timing-v2.sh`. **Default change:** a
+  mount without `domain_depth=0` restricts the v1 QUERY to administrators.
 - Contributor experience (plan `docs/dx-plan.md`, journal 0032): `make help` and `make lint`
   (the CI `Lint` job now runs `make lint`, which also covers `scripts/*.sh`); SPDX check moved
   to `scripts/check-spdx.sh`; `.github/CODEOWNERS`; `CITATION.cff`; `good first issue` and

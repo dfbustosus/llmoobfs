@@ -52,4 +52,5 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0032 — Experiência do desenvolvedor no GitHub: plano e lote 1](0032-dx-batch1.md)
 - [0033 — Pesquisas para a decisão sobre o papel do `QUERY` (ADR-0009)](0033-query-design-research.md)
 - [0034 — ADR-0009 aceita: `QUERY` por domínio no kernel (alternativa E)](0034-adr-0009-accepted.md)
-- [0035 — Experiência do desenvolvedor no GitHub: lote 2 (ferramentas)](0035-dx-batch2.md)
+- [0035 — Fase Q2a: `QUERY` por domínio (UAPI v2), partições e regra de homogeneidade](0035-phase-q2a-domain-query.md)
+- [0039 — Experiência do desenvolvedor no GitHub: lote 2 (ferramentas)](0039-dx-batch2.md)

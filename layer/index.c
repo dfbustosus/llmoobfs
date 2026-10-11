@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * In-memory attribute index of the MoobFS memory layer (phase 2d).
+ * In-memory attribute index of the MoobFS memory layer (phase 2d, domains in Q2a).
  *
  * Built at mount time by walking the lower tree and reading every
- * user.moob.* attribute; kept current by the xattr, unlink, rmdir and rename
- * paths of main.c; never persisted. Answers MOOB_IOC_QUERY and
- * MOOB_IOC_GET_INFO issued on the mount root.
+ * user.moob.* attribute; kept current by the xattr, unlink, rmdir, rename,
+ * setattr, set_acl and link paths of main.c; never persisted. The index is
+ * partitioned by permission domain (docs/spec-query-v2.md): a partition is the
+ * set of entries of one attribute name in one domain, split again by whether
+ * the inode passes the homogeneity rule. Answers MOOB_IOC_QUERY (all
+ * partitions; privileged when domains are on) and MOOB_IOC_GET_INFO on the
+ * mount root, and MOOB_IOC_QUERY2 (one domain) on a domain directory.
  */
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -18,14 +22,19 @@
 #include <linux/string.h>
 #include <linux/uio.h>
 #include <linux/limits.h>
+#include <linux/posix_acl.h>
+#include <linux/capability.h>
 #include "moobl.h"
 #include "moobfs_attr.h"
 #include "moobfs_ioctl.h"
 
+/* One partition: ordered in ix->names by (name, domain, hetero). */
 struct moobl_ix_name {
 	struct rb_node node;
 	struct rb_root entries;		/* struct moobl_ix_entry, ordered by (type, value, ino) */
 	u32 count;
+	u64 domain;			/* lower ino of the domain directory; 0: outside any domain */
+	bool hetero;			/* inodes failing the homogeneity rule */
 	char name[MOOB_ATTR_NAME_MAX + 1];
 };
 
@@ -34,6 +43,14 @@ struct moobl_ix_inode {
 	struct list_head entries;	/* this inode's typed attributes */
 	struct inode *upper;		/* cached layer inode, or NULL */
 	char *path;			/* mount-relative path recorded at scan or write time */
+	u64 domain;			/* partition key of all its entries */
+	bool hetero;
+};
+
+/* Where an inode's entries belong (docs/spec-query-v2.md §2, §3). */
+struct moobl_place {
+	u64 domain;
+	bool hetero;
 };
 
 struct moobl_ix_entry {
@@ -114,13 +131,25 @@ static void uncharge(struct moobl_index *ix, size_t bytes)
 	ix->used -= min_t(u64, ix->used, bytes);
 }
 
-static struct moobl_ix_name *name_find(struct moobl_index *ix, const char *name)
+static int part_cmp(const char *name, u64 domain, bool hetero, const struct moobl_ix_name *nm)
+{
+	int c = strcmp(name, nm->name);
+
+	if (c)
+		return c;
+	if (domain != nm->domain)
+		return domain < nm->domain ? -1 : 1;
+	return (int)hetero - (int)nm->hetero;
+}
+
+static struct moobl_ix_name *name_find(struct moobl_index *ix, const char *name, u64 domain,
+				       bool hetero)
 {
 	struct rb_node *n = ix->names.rb_node;
 
 	while (n) {
 		struct moobl_ix_name *nm = rb_entry(n, struct moobl_ix_name, node);
-		int c = strcmp(name, nm->name);
+		int c = part_cmp(name, domain, hetero, nm);
 
 		if (!c)
 			return nm;
@@ -129,7 +158,28 @@ static struct moobl_ix_name *name_find(struct moobl_index *ix, const char *name)
 	return NULL;
 }
 
-static struct moobl_ix_name *name_get(struct moobl_index *ix, const char *name)
+/* First partition of this name at or after (domain, hetero), or NULL. */
+static struct moobl_ix_name *name_lower_bound(struct moobl_index *ix, const char *name, u64 domain,
+					      bool hetero)
+{
+	struct rb_node *n = ix->names.rb_node;
+	struct moobl_ix_name *best = NULL;
+
+	while (n) {
+		struct moobl_ix_name *nm = rb_entry(n, struct moobl_ix_name, node);
+
+		if (part_cmp(name, domain, hetero, nm) <= 0) {
+			best = nm;
+			n = n->rb_left;
+		} else {
+			n = n->rb_right;
+		}
+	}
+	return best && !strcmp(best->name, name) ? best : NULL;
+}
+
+static struct moobl_ix_name *name_get(struct moobl_index *ix, const char *name, u64 domain,
+				      bool hetero)
 {
 	struct rb_node **p = &ix->names.rb_node, *parent = NULL;
 	struct moobl_ix_name *nm;
@@ -139,7 +189,7 @@ static struct moobl_ix_name *name_get(struct moobl_index *ix, const char *name)
 
 		parent = *p;
 		nm = rb_entry(parent, struct moobl_ix_name, node);
-		c = strcmp(name, nm->name);
+		c = part_cmp(name, domain, hetero, nm);
 		if (!c)
 			return nm;
 		p = c < 0 ? &parent->rb_left : &parent->rb_right;
@@ -152,6 +202,8 @@ static struct moobl_ix_name *name_get(struct moobl_index *ix, const char *name)
 		return ERR_PTR(-ENOMEM);
 	}
 	strscpy(nm->name, name, sizeof(nm->name));
+	nm->domain = domain;
+	nm->hetero = hetero;
 	nm->entries = RB_ROOT;
 	rb_link_node(&nm->node, parent, p);
 	rb_insert_color(&nm->node, &ix->names);
@@ -195,6 +247,8 @@ static void inode_rec_put_if_empty(struct moobl_index *ix, struct moobl_ix_inode
 {
 	if (!list_empty(&rec->entries))
 		return;
+	if (rec->hetero)
+		ix->hetero_count--;
 	xa_erase(&ix->inodes, rec->ino);
 	if (rec->path)
 		uncharge(ix, strlen(rec->path) + 1);
@@ -225,14 +279,75 @@ static struct moobl_ix_entry *entry_find(struct moobl_ix_inode *rec, const char 
 	return NULL;
 }
 
+static void entry_link(struct moobl_ix_name *nm, struct moobl_ix_entry *e, u64 ino)
+{
+	struct rb_node **p = &nm->entries.rb_node, *parent = NULL;
+
+	while (*p) {
+		struct moobl_ix_entry *cur;
+
+		parent = *p;
+		cur = rb_entry(parent, struct moobl_ix_entry, node);
+		p = entry_cmp(cur, e->type, e->value, e->len, ino) < 0 ? &parent->rb_right
+								       : &parent->rb_left;
+	}
+	rb_link_node(&e->node, parent, p);
+	rb_insert_color(&e->node, &nm->entries);
+}
+
+/*
+ * Moves every entry of an inode to the partition given by pl. An entry that cannot be
+ * moved for lack of memory is dropped and the index marked incomplete, so it can never be
+ * answered from a partition it no longer belongs to. Caller holds the write lock.
+ */
+static int rec_set_partition(struct moobl_index *ix, struct moobl_ix_inode *rec,
+			     const struct moobl_place *pl)
+{
+	struct moobl_ix_entry *e, *tmp;
+	int err = 0;
+
+	if (rec->domain == pl->domain && rec->hetero == pl->hetero)
+		return 0;
+	list_for_each_entry_safe(e, tmp, &rec->entries, by_ino) {
+		struct moobl_ix_name *old = e->name, *nm;
+
+		rb_erase(&e->node, &old->entries);
+		old->count--;
+		nm = name_get(ix, old->name, pl->domain, pl->hetero);
+		if (IS_ERR(nm)) {
+			list_del(&e->by_ino);
+			ix->entries--;
+			uncharge(ix, sizeof(*e) + e->len);
+			kfree(e);
+			name_put_if_empty(ix, old);
+			err = -ENOMEM;
+			continue;
+		}
+		e->name = nm;
+		entry_link(nm, e, rec->ino);
+		nm->count++;
+		name_put_if_empty(ix, old);
+	}
+	if (rec->hetero != pl->hetero) {
+		if (pl->hetero)
+			ix->hetero_count++;
+		else
+			ix->hetero_count--;
+	}
+	rec->domain = pl->domain;
+	rec->hetero = pl->hetero;
+	if (err)
+		ix->incomplete = true;
+	return err;
+}
+
 /* Replaces or inserts one typed attribute. Caller holds the write lock. */
-static int index_put(struct moobl_index *ix, u64 ino, const char *name, const u8 *value,
-		     size_t size)
+static int index_put(struct moobl_index *ix, u64 ino, const struct moobl_place *pl,
+		     const char *name, const u8 *value, size_t size)
 {
 	struct moobl_ix_inode *rec;
 	struct moobl_ix_name *nm;
 	struct moobl_ix_entry *e, *old;
-	struct rb_node **p, *parent = NULL;
 	u16 len = (u16)(size - 1);
 
 	if (value[0] == MOOB_T_RAW)
@@ -240,10 +355,11 @@ static int index_put(struct moobl_index *ix, u64 ino, const char *name, const u8
 	rec = inode_rec_get(ix, ino);
 	if (IS_ERR(rec))
 		return PTR_ERR(rec);
+	rec_set_partition(ix, rec, pl);
 	old = entry_find(rec, name);
 	if (old)
 		entry_free(ix, old);	/* before name_get: freeing may drop the name node */
-	nm = name_get(ix, name);
+	nm = name_get(ix, name, rec->domain, rec->hetero);
 	if (IS_ERR(nm)) {
 		inode_rec_put_if_empty(ix, rec);
 		return PTR_ERR(nm);
@@ -265,17 +381,7 @@ static int index_put(struct moobl_index *ix, u64 ino, const char *name, const u8
 	e->type = value[0];
 	e->len = len;
 	memcpy(e->value, value + 1, len);
-	p = &nm->entries.rb_node;
-	while (*p) {
-		struct moobl_ix_entry *cur;
-
-		parent = *p;
-		cur = rb_entry(parent, struct moobl_ix_entry, node);
-		p = entry_cmp(cur, e->type, e->value, e->len, ino) < 0 ? &parent->rb_right
-								       : &parent->rb_left;
-	}
-	rb_link_node(&e->node, parent, p);
-	rb_insert_color(&e->node, &nm->entries);
+	entry_link(nm, e, ino);
 	list_add(&e->by_ino, &rec->entries);
 	nm->count++;
 	ix->entries++;
@@ -300,6 +406,153 @@ static void index_set_path(struct moobl_index *ix, struct moobl_ix_inode *rec, c
 		uncharge(ix, strlen(rec->path) + 1);
 	kfree(rec->path);
 	rec->path = copy;
+}
+
+/* ---- domains and the homogeneity rule (docs/spec-query-v2.md §2, §3) ---- */
+
+#define MOOBL_MAX_DEPTH 64
+
+/* True when the inode carries an access ACL beyond the minimal one (mode bits only). */
+static bool ext_acl(struct inode *inode)
+{
+	struct posix_acl *acl;
+	bool ext;
+
+	if (!IS_POSIXACL(inode))
+		return false;
+	acl = get_inode_acl(inode, ACL_TYPE_ACCESS);
+	if (IS_ERR(acl))
+		return true;	/* unknown: treat as restrictive */
+	if (!acl)
+		return false;
+	ext = acl->a_count > 3;
+	posix_acl_release(acl);
+	return ext;
+}
+
+/*
+ * Sufficient condition for "everyone who can traverse the domain directory dom can also
+ * reach in": read it (want_read, a file or a directory carrying attributes) or traverse it
+ * (an intermediate directory). Either in grants the class bit to others and has no
+ * extended ACL, or in and dom share owner and group, neither has an extended ACL, and in
+ * grants the bit to every class that dom lets traverse. Lower inodes: permissions are the
+ * lower filesystem's.
+ */
+static bool reach_ok(struct inode *in, struct inode *dom, bool want_read)
+{
+	umode_t u = want_read ? S_IRUSR : S_IXUSR, g = want_read ? S_IRGRP : S_IXGRP;
+	umode_t o = want_read ? S_IROTH : S_IXOTH;
+	bool acl = ext_acl(in);
+
+	if (!acl && (in->i_mode & o))
+		return true;
+	if (acl || ext_acl(dom))
+		return false;
+	if (!uid_eq(in->i_uid, dom->i_uid) || !gid_eq(in->i_gid, dom->i_gid))
+		return false;
+	if ((dom->i_mode & S_IXUSR) && !(in->i_mode & u))
+		return false;
+	if ((dom->i_mode & S_IXGRP) && !(in->i_mode & g))
+		return false;
+	if ((dom->i_mode & S_IXOTH) && !(in->i_mode & o))
+		return false;
+	return true;
+}
+
+static bool target_ok(struct inode *in, struct inode *dom)
+{
+	if (S_ISREG(in->i_mode) && in->i_nlink > 1)
+		return false;	/* another name may live in another domain */
+	return reach_ok(in, dom, true);
+}
+
+/*
+ * Walks from a layer dentry up to the mount root, keeping a reference on every dentry on
+ * the way: chain[0] is the dentry itself (depth *depth), chain[*depth - j] is its ancestor
+ * at depth j. Returns false when the path is deeper than MOOBL_MAX_DEPTH (references
+ * dropped). Directory renames never change a dentry's depth or domain (EXDEV otherwise),
+ * so a concurrent rename cannot move it between partitions behind the caller's back.
+ */
+static bool walk_up(struct dentry *dentry, struct dentry **chain, unsigned int *depth)
+{
+	struct dentry *d = dget(dentry);
+	unsigned int k = 0;
+
+	while (!IS_ROOT(d)) {
+		if (k == MOOBL_MAX_DEPTH) {
+			dput(d);
+			while (k)
+				dput(chain[--k]);
+			return false;
+		}
+		chain[k++] = d;
+		d = dget_parent(d);
+	}
+	dput(d);
+	*depth = k;
+	return true;
+}
+
+static void chain_put(struct dentry **chain, unsigned int k)
+{
+	while (k)
+		dput(chain[--k]);
+}
+
+/*
+ * Partition of a layer dentry that carries attributes. With self, the inode is placed at the
+ * name of dentry (a rename target, before the VFS moves the dentry). May sleep (ACL reads).
+ */
+static void place_dentry(struct moobl_index *ix, struct dentry *dentry, struct inode *self,
+			 struct moobl_place *pl)
+{
+	struct dentry **chain;
+	unsigned int n = ix->domain_depth, k, i;
+	struct inode *dom;
+	bool ok = true;
+
+	pl->domain = 0;
+	pl->hetero = false;
+	if (!n)
+		return;
+	chain = kmalloc_array(MOOBL_MAX_DEPTH, sizeof(*chain), GFP_KERNEL);
+	if (!chain || !walk_up(dentry, chain, &k)) {
+		pl->hetero = true;	/* cannot evaluate: keep it out of every domain answer */
+		kfree(chain);
+		return;
+	}
+	if (k > n) {
+		dom = moobl_lower_inode(d_inode(chain[k - n]));
+		pl->domain = dom->i_ino;
+		for (i = k - n - 1; i >= 1 && ok; i--)
+			ok = reach_ok(moobl_lower_inode(d_inode(chain[i])), dom, false);
+		if (ok)
+			ok = target_ok(moobl_lower_inode(self ? self : d_inode(chain[0])), dom);
+		pl->hetero = !ok;
+	}
+	chain_put(chain, k);
+	kfree(chain);
+}
+
+/* Depth of a layer dentry and the lower ino of its ancestor at depth n (0 when none or negative). */
+static bool depth_and_domain(struct moobl_index *ix, struct dentry *dentry, unsigned int *depth,
+			     u64 *domain)
+{
+	struct dentry **chain = kmalloc_array(MOOBL_MAX_DEPTH, sizeof(*chain), GFP_KERNEL);
+	unsigned int n = ix->domain_depth, k;
+
+	if (!chain || !walk_up(dentry, chain, &k)) {
+		kfree(chain);
+		return false;
+	}
+	*depth = k;
+	*domain = 0;
+	/* the dentry itself may be negative (a rename target): it then has no domain inode yet */
+	if (n && k >= n && d_really_is_positive(chain[k - n]))
+		*domain = moobl_lower_inode(d_inode(chain[k - n]))->i_ino;
+	chain_put(chain, k);
+	kfree(chain);
+	return true;
 }
 
 /* ---- mount-time scan --------------------------------------------------- */
@@ -339,11 +592,16 @@ struct scan_dir {
 	struct list_head list;
 	struct dentry *dentry;		/* lower directory, referenced */
 	char *path;			/* mount-relative, "" for the root */
+	unsigned int depth;		/* 0 for the root */
+	struct moobl_place self;	/* partition of the directory's own attributes */
+	u64 inner;			/* domain of entries inside it; 0: none */
+	bool inner_ok;			/* every directory from the domain down to it passes */
+	struct dentry *dom;		/* lower domain directory, referenced, or NULL */
 };
 
 /* Reads the typed attributes of one lower dentry into the index. */
 static int scan_attrs(struct super_block *sb, struct dentry *lower, u64 ino, const char *path,
-		      char *list, size_t list_cap, u8 *value)
+		      const struct moobl_place *pl, char *list, size_t list_cap, u8 *value)
 {
 	struct moobl_index *ix = IX(sb);
 	ssize_t len;
@@ -368,7 +626,7 @@ static int scan_attrs(struct super_block *sb, struct dentry *lower, u64 ino, con
 		n = vfs_getxattr(&nop_mnt_idmap, lower, p, value, MOOB_ATTR_VALUE_MAX + 1);
 		if (n <= 0 || moob_attr_validate(value, n) != MOOB_ATTR_OK)
 			continue;	/* invalid encodings are not indexed; moobfs-check reports them */
-		err = index_put(ix, ino, name, value, n);
+		err = index_put(ix, ino, pl, name, value, n);
 		if (!err) {
 			struct moobl_ix_inode *rec = xa_load(&ix->inodes, ino);
 
@@ -423,8 +681,8 @@ int moobl_index_build(struct super_block *sb)
 		struct file *dir;
 
 		list_del(&cur->list);
-		err = scan_attrs(sb, cur->dentry, d_inode(cur->dentry)->i_ino, cur->path, list,
-				 XATTR_LIST_MAX, value);
+		err = scan_attrs(sb, cur->dentry, d_inode(cur->dentry)->i_ino, cur->path, &cur->self,
+				 list, XATTR_LIST_MAX, value);
 		if (err)
 			goto drop;
 		dir = dentry_open(&dpath, O_RDONLY | O_DIRECTORY, sbi->creds);
@@ -457,13 +715,36 @@ int moobl_index_build(struct super_block *sb)
 							err = -ENOMEM;
 							kfree(cpath);
 						} else {
+							unsigned int dn = ix->domain_depth;
+
 							nd->dentry = dget(child);
 							nd->path = cpath;
+							nd->depth = cur->depth + 1;
+							if (dn && nd->depth == dn) {
+								nd->inner = d_inode(child)->i_ino;
+								nd->inner_ok = true;
+								nd->dom = dget(child);
+							} else if (dn && nd->depth > dn) {
+								struct inode *dom = d_inode(cur->dom);
+
+								nd->dom = dget(cur->dom);
+								nd->inner = cur->inner;
+								nd->self.domain = cur->inner;
+								nd->self.hetero = !(cur->inner_ok &&
+										    target_ok(d_inode(child), dom));
+								nd->inner_ok = cur->inner_ok &&
+									       reach_ok(d_inode(child), dom, false);
+							}
 							list_add(&nd->list, &stack);
 						}
 					} else {
-						err = scan_attrs(sb, child, d_inode(child)->i_ino, cpath, list,
-								 XATTR_LIST_MAX, value);
+						struct moobl_place fpl = { .domain = cur->inner };
+
+						if (cur->inner)
+							fpl.hetero = !(cur->inner_ok &&
+								       target_ok(d_inode(child), d_inode(cur->dom)));
+						err = scan_attrs(sb, child, d_inode(child)->i_ino, cpath, &fpl,
+								 list, XATTR_LIST_MAX, value);
 						kfree(cpath);
 					}
 					if (!IS_ERR(child))
@@ -477,6 +758,7 @@ int moobl_index_build(struct super_block *sb)
 		}
 drop:
 		dput(cur->dentry);
+		dput(cur->dom);
 		kfree(cur->path);
 		kfree(cur);
 	}
@@ -485,6 +767,7 @@ drop:
 
 		list_del(&left->list);
 		dput(left->dentry);
+		dput(left->dom);
 		kfree(left->path);
 		kfree(left);
 	}
@@ -499,13 +782,15 @@ out:
 	return err;
 }
 
-void moobl_index_init(struct super_block *sb, u64 budget, bool enabled)
+void moobl_index_init(struct super_block *sb, u64 budget, bool enabled, unsigned int domain_depth)
 {
 	struct moobl_index *ix = IX(sb);
 
 	init_rwsem(&ix->lock);
 	ix->names = RB_ROOT;
 	xa_init(&ix->inodes);
+	xa_init(&ix->fallback);
+	ix->domain_depth = domain_depth;
 	ix->budget = budget;
 	ix->enabled = enabled;
 	ix->initialized = true;
@@ -528,6 +813,7 @@ void moobl_index_destroy(struct super_block *sb)
 		inode_rec_put_if_empty(ix, rec);
 	}
 	xa_destroy(&ix->inodes);
+	xa_destroy(&ix->fallback);
 	up_write(&ix->lock);
 }
 
@@ -553,12 +839,14 @@ int moobl_index_set(struct super_block *sb, struct dentry *dentry, const char *n
 	struct moobl_index *ix = IX(sb);
 	struct inode *inode = d_inode(dentry);
 	struct moobl_ix_inode *rec;
+	struct moobl_place pl;
 	int err;
 
 	if (!ix->enabled)
 		return 0;
+	place_dentry(ix, dentry, NULL, &pl);	/* may sleep: outside the index lock */
 	down_write(&ix->lock);
-	err = index_put(ix, inode->i_ino, name, value, size);
+	err = index_put(ix, inode->i_ino, &pl, name, value, size);
 	if (err) {
 		/* The lower write already succeeded; the index is now incomplete until remount. */
 		if (!ix->incomplete)
@@ -612,22 +900,82 @@ void moobl_index_drop_inode(struct super_block *sb, u64 ino)
 	up_write(&ix->lock);
 }
 
-void moobl_index_renamed(struct super_block *sb, struct dentry *dentry)
+/*
+ * inode now lives at the name of where (the rename target dentry, called before the VFS
+ * moves the dentries, so where already carries the new parent and name).
+ */
+void moobl_index_renamed(struct super_block *sb, struct inode *inode, struct dentry *where)
 {
 	struct moobl_index *ix = IX(sb);
 	struct moobl_ix_inode *rec;
+	struct moobl_place pl;
 
 	if (!ix->enabled)
 		return;
-	down_write(&ix->lock);
-	if (d_is_dir(dentry)) {
+	if (S_ISDIR(inode->i_mode)) {
+		/* Same depth and domain (EXDEV otherwise): only the recorded names went stale. */
+		down_write(&ix->lock);
 		ix->paths_stale = true;	/* descendants keep old names; QUERY uses the dentry cache */
-	} else {
-		rec = xa_load(&ix->inodes, d_inode(dentry)->i_ino);
-		if (rec)
-			record_dentry_path(ix, rec, dentry);
+		up_write(&ix->lock);
+		return;
+	}
+	place_dentry(ix, where, inode, &pl);	/* a file may change domain: move its entries */
+	down_write(&ix->lock);
+	rec = xa_load(&ix->inodes, inode->i_ino);
+	if (rec) {
+		record_dentry_path(ix, rec, where);
+		rec_set_partition(ix, rec, &pl);
 	}
 	up_write(&ix->lock);
+}
+
+/*
+ * A change of mode, owner, group, access ACL or link count. For a file or a directory
+ * carrying attributes, its own partition is recomputed. For a directory inside a domain
+ * (or the domain directory itself), every file below it may change homogeneity: rather
+ * than walking the subtree, the domain falls back to per-result checks until the next
+ * mount (docs/spec-query-v2.md §3; recorded in journal 0035).
+ */
+void moobl_index_perm_changed(struct super_block *sb, struct dentry *dentry)
+{
+	struct moobl_index *ix = IX(sb);
+	struct moobl_ix_inode *rec;
+	struct moobl_place pl;
+	unsigned int depth;
+	u64 domain;
+
+	if (!ix->enabled || !ix->domain_depth || d_really_is_negative(dentry))
+		return;
+	if (d_is_dir(dentry) && depth_and_domain(ix, dentry, &depth, &domain) &&
+	    depth >= ix->domain_depth && domain)
+		xa_store(&ix->fallback, (unsigned long)domain, xa_mk_value(1), GFP_KERNEL);
+	place_dentry(ix, dentry, NULL, &pl);
+	down_write(&ix->lock);
+	rec = xa_load(&ix->inodes, d_inode(dentry)->i_ino);
+	if (rec)
+		rec_set_partition(ix, rec, &pl);
+	up_write(&ix->lock);
+}
+
+/*
+ * A directory keeps its depth and domain across a rename, otherwise the partition of its
+ * whole subtree would change: the caller returns EXDEV (docs/spec-query-v2.md §5).
+ */
+bool moobl_rename_crosses_domain(struct super_block *sb, struct dentry *old_dentry,
+				 struct dentry *new_dentry)
+{
+	struct moobl_index *ix = IX(sb);
+	unsigned int od, nd;
+	u64 odom, ndom;
+
+	if (!ix->enabled || !ix->domain_depth)
+		return false;
+	if (!depth_and_domain(ix, old_dentry, &od, &odom) ||
+	    !depth_and_domain(ix, new_dentry, &nd, &ndom))
+		return true;
+	if (od == ix->domain_depth)
+		odom = ndom = 0;	/* a domain directory itself: its domain is its own inode */
+	return od != nd || odom != ndom;
 }
 
 void moobl_index_inode_cached(struct super_block *sb, struct inode *inode)
@@ -719,14 +1067,15 @@ static bool entry_matches(const struct moobl_ix_entry *e, const struct moob_quer
 	}
 }
 
-static bool inode_matches_rest(struct moobl_ix_inode *rec, const struct moob_query *q)
+static bool inode_matches_rest(struct moobl_ix_inode *rec, const struct moob_query_term *terms,
+			       u32 nterms)
 {
 	u32 i;
 
-	for (i = 1; i < q->nterms; i++) {
-		struct moobl_ix_entry *e = entry_find(rec, q->terms[i].name);
+	for (i = 1; i < nterms; i++) {
+		struct moobl_ix_entry *e = entry_find(rec, terms[i].name);
 
-		if (!e || !entry_matches(e, &q->terms[i]))
+		if (!e || !entry_matches(e, &terms[i]))
 			return false;
 	}
 	return true;
@@ -788,7 +1137,9 @@ struct moobl_candidate {
 };
 
 struct moobl_resume {
-	bool valid;
+	u64 pdomain;		/* partition being scanned */
+	bool phetero;
+	bool valid;		/* the entry key below is set */
 	u8 type;
 	u16 len;
 	u64 ino;
@@ -886,99 +1237,131 @@ static bool past_end(const struct moobl_ix_entry *e, const struct moob_query_ter
 	}
 }
 
-static long do_query(struct super_block *sb, struct file *file, void __user *arg)
+/* What a query scans and how its results are authorized and named. */
+struct moobl_qscope {
+	bool all;		/* v1: every partition of terms[0].name */
+	u64 domain;		/* QUERY2: the domain's homogeneous partition */
+	bool check;		/* authorize each result with the caller's credentials */
+	unsigned int strip;	/* leading path components dropped from mount-relative paths */
+};
+
+/* Path relative to the scope: the mount-relative path without its first `strip` names. */
+static const char *scope_path(const char *path, unsigned int strip)
+{
+	while (strip--) {
+		path = strchr(path, '/');
+		if (!path)
+			return NULL;
+		path++;
+	}
+	return *path ? path : NULL;
+}
+
+static long query_run(struct super_block *sb, struct file *file,
+		      const struct moob_query_term *terms, u32 nterms, u32 limit, u64 results,
+		      const struct moobl_qscope *sc, u32 *count_out, u32 *truncated_out)
 {
 	struct moobl_index *ix = IX(sb);
-	struct moob_query *q;
-	struct moob_query_result __user *uout;
-	struct moob_query_result *one = NULL;
-	struct moobl_candidate *cand = NULL;
-	struct moobl_resume *resume = NULL;
+	struct moob_query_result __user *uout = u64_to_user_ptr(results);
+	struct moob_query_result *one;
+	struct moobl_candidate *cand;
+	struct moobl_resume *resume;
 	struct moob_query_result tmp;
-	char *pathbuf = NULL;
-	u32 i, count = 0;
+	char *pathbuf;
+	u32 i, count = 0, truncated = 0;
 	bool exhausted = false;
 	long err = 0;
 
-	if (!ix->enabled)
-		return -ENOSYS;
-	q = memdup_user(arg, sizeof(*q));
-	if (IS_ERR(q))
-		return PTR_ERR(q);
-	if (q->version != MOOB_UAPI_VERSION || !q->nterms || q->nterms > MOOB_QUERY_MAX_TERMS ||
-	    !q->limit || q->limit > MOOB_QUERY_MAX_LIMIT || q->flags || q->reserved[0] ||
-	    q->reserved[1]) {
-		err = -EINVAL;
-		goto out_q;
-	}
-	for (i = 0; i < q->nterms; i++) {
-		err = term_check(&q->terms[i]);
-		if (err)
-			goto out_q;
-	}
 	/* one result at a time is copied to the caller's array, so the kernel never allocates
 	 * (or zeroes) a limit-sized buffer: the cost is per result, not per requested limit */
-	uout = u64_to_user_ptr(q->results);
 	one = kmalloc(sizeof(*one), GFP_KERNEL);
 	cand = kcalloc(MOOBL_QUERY_CHUNK, sizeof(*cand), GFP_KERNEL);
 	resume = kzalloc(sizeof(*resume), GFP_KERNEL);
 	pathbuf = (char *)__get_free_page(GFP_KERNEL);
 	if (!one || !cand || !resume || !pathbuf) {
 		err = -ENOMEM;
-		goto out_buf;
+		goto out;
 	}
-	q->truncated = 0;
+	resume->pdomain = sc->all ? 0 : sc->domain;
 	while (!exhausted && !err) {
 		struct moobl_ix_name *nm;
 		struct rb_node *n;
 		u32 ncand = 0;
+		bool more = false;
 
 		down_read(&ix->lock);
-		nm = name_find(ix, q->terms[0].name);
-		n = !nm ? NULL : resume->valid ? first_after(nm, resume) : seek_first(nm, &q->terms[0]);
-		for (; n; n = rb_next(n)) {
-			struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
+		nm = sc->all ? name_lower_bound(ix, terms[0].name, resume->pdomain, resume->phetero)
+			     : name_find(ix, terms[0].name, sc->domain, false);
+		if (nm && (nm->domain != resume->pdomain || nm->hetero != resume->phetero)) {
+			resume->pdomain = nm->domain;	/* the partition we stopped in is gone */
+			resume->phetero = nm->hetero;
+			resume->valid = false;
+		}
+		n = !nm ? NULL : resume->valid ? first_after(nm, resume) : seek_first(nm, &terms[0]);
+		while (nm && !err) {
+			struct moobl_ix_entry *e;
 
-			if (past_end(e, &q->terms[0])) {
-				n = NULL;
-				break;
+			if (!n || past_end(rb_entry(n, struct moobl_ix_entry, node), &terms[0])) {
+				struct rb_node *next = sc->all ? rb_next(&nm->node) : NULL;
+				struct moobl_ix_name *nx = next ? rb_entry(next, struct moobl_ix_name, node)
+								: NULL;
+
+				if (!nx || strcmp(nx->name, terms[0].name))
+					break;
+				nm = nx;	/* v1: next partition of the same name */
+				resume->pdomain = nm->domain;
+				resume->phetero = nm->hetero;
+				resume->valid = false;
+				n = seek_first(nm, &terms[0]);
+				continue;
 			}
+			e = rb_entry(n, struct moobl_ix_entry, node);
 			resume->valid = true;
 			resume->type = e->type;
 			resume->len = e->len;
 			resume->ino = e->owner->ino;
 			memcpy(resume->value, e->value, e->len);
-			if (!entry_matches(e, &q->terms[0]) || !inode_matches_rest(e->owner, q))
+			n = rb_next(n);
+			if (!entry_matches(e, &terms[0]) || !inode_matches_rest(e->owner, terms, nterms))
 				continue;
 			fill_result(ix, e->owner, &tmp, pathbuf);
 			cand[ncand].ino = tmp.ino;
 			cand[ncand].path = NULL;
 			if (!(tmp.flags & MOOB_RES_PATH_UNKNOWN)) {
-				cand[ncand].path = kstrdup(tmp.path, GFP_ATOMIC);
-				if (!cand[ncand].path) {
-					err = -ENOMEM;
-					break;
+				const char *rel = scope_path(tmp.path, sc->strip);
+
+				if (rel) {
+					cand[ncand].path = kstrdup(rel, GFP_ATOMIC);
+					if (!cand[ncand].path)
+						err = -ENOMEM;
 				}
 			}
 			ncand++;
 			if (ncand == MOOBL_QUERY_CHUNK) {
-				n = rb_next(n);
+				more = true;
 				break;
 			}
 		}
-		if (!n)
+		if (!more)
 			exhausted = true;
 		up_read(&ix->lock);
 		for (i = 0; i < ncand; i++) {
-			if (!err && caller_may_read(file, sb, cand[i].path, cand[i].ino)) {
-				if (count == q->limit) {
-					q->truncated = 1;
+			bool ok = !err && (!sc->check ||
+					   caller_may_read(file, sb, cand[i].path, cand[i].ino));
+
+			if (ok) {
+				if (count == limit) {
+					truncated = 1;
 					exhausted = true;
 				} else {
 					memset(one, 0, sizeof(*one));
 					one->ino = cand[i].ino;
-					one->path_len = (u32)strlen(cand[i].path);
-					memcpy(one->path, cand[i].path, one->path_len + 1);
+					if (cand[i].path) {
+						one->path_len = (u32)strlen(cand[i].path);
+						memcpy(one->path, cand[i].path, one->path_len + 1);
+					} else {
+						one->flags = MOOB_RES_PATH_UNKNOWN;
+					}
 					if (copy_to_user(&uout[count], one, sizeof(*one)))
 						err = -EFAULT;
 					else
@@ -989,12 +1372,9 @@ static long do_query(struct super_block *sb, struct file *file, void __user *arg
 			cand[i].path = NULL;
 		}
 	}
-	if (err)
-		goto out_buf;
-	q->count = count;
-	if (copy_to_user(arg, q, sizeof(*q)))
-		err = -EFAULT;
-out_buf:
+	*count_out = count;
+	*truncated_out = truncated;
+out:
 	if (cand)
 		for (i = 0; i < MOOBL_QUERY_CHUNK; i++)
 			kfree(cand[i].path);
@@ -1003,7 +1383,101 @@ out_buf:
 	if (pathbuf)
 		free_page((unsigned long)pathbuf);
 	kfree(one);
-out_q:
+	return err;
+}
+
+/* v1: every partition, each result checked; privileged when domains are on (spec §4.5). */
+static long do_query(struct super_block *sb, struct file *file, void __user *arg)
+{
+	struct moobl_index *ix = IX(sb);
+	struct moobl_qscope sc = { .all = true, .check = true };
+	struct moob_query *q;
+	u32 i;
+	long err = 0;
+
+	if (!ix->enabled)
+		return -ENOSYS;
+	if (ix->domain_depth && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+	q = memdup_user(arg, sizeof(*q));
+	if (IS_ERR(q))
+		return PTR_ERR(q);
+	if (q->version != MOOB_UAPI_VERSION || !q->nterms || q->nterms > MOOB_QUERY_MAX_TERMS ||
+	    !q->limit || q->limit > MOOB_QUERY_MAX_LIMIT || q->flags || q->reserved[0] ||
+	    q->reserved[1]) {
+		err = -EINVAL;
+		goto out;
+	}
+	for (i = 0; i < q->nterms && !err; i++)
+		err = term_check(&q->terms[i]);
+	if (!err)
+		err = query_run(sb, file, q->terms, q->nterms, q->limit, q->results, &sc, &q->count,
+				&q->truncated);
+	if (!err && copy_to_user(arg, q, sizeof(*q)))
+		err = -EFAULT;
+out:
+	kfree(q);
+	return err;
+}
+
+static bool all_zero(const void *p, size_t n)
+{
+	const u8 *b = p;
+
+	while (n--)
+		if (*b++)
+			return false;
+	return true;
+}
+
+/*
+ * QUERY2 on a domain directory (docs/spec-query-v2.md §4): the caller must be able to read
+ * and traverse the domain directory now; results come from the domain's homogeneous
+ * partition without per-result checks, unless a permission change inside the domain made
+ * it fall back to them.
+ */
+static long do_query2(struct super_block *sb, struct file *file, void __user *arg)
+{
+	struct moobl_index *ix = IX(sb);
+	struct moobl_qscope sc = { 0 };
+	struct moob_query2 *q;
+	unsigned int depth;
+	u64 domain;
+	u32 i;
+	long err = 0;
+
+	if (!ix->enabled)
+		return -ENOSYS;
+	if (!ix->domain_depth)
+		return -EOPNOTSUPP;
+	if (!d_is_dir(file->f_path.dentry) ||
+	    !depth_and_domain(ix, file->f_path.dentry, &depth, &domain) ||
+	    depth != ix->domain_depth)
+		return -ENOTTY;
+	if (inode_permission(&nop_mnt_idmap, file_inode(file), MAY_EXEC | MAY_READ))
+		return -EACCES;
+	q = memdup_user(arg, sizeof(*q));
+	if (IS_ERR(q))
+		return PTR_ERR(q);
+	if (q->version != MOOB_QUERY2_VERSION || !q->nterms || q->nterms > MOOB_QUERY_MAX_TERMS ||
+	    !q->limit || q->limit > MOOB_QUERY_MAX_LIMIT || q->flags || q->order ||
+	    !all_zero(q->order_by, sizeof(q->order_by)) || !all_zero(q->pad, sizeof(q->pad)) ||
+	    !all_zero(q->cursor, sizeof(q->cursor)) || !all_zero(q->reserved, sizeof(q->reserved))) {
+		err = -EINVAL;
+		goto out;
+	}
+	for (i = 0; i < q->nterms && !err; i++)
+		err = term_check(&q->terms[i]);
+	if (err)
+		goto out;
+	sc.domain = domain;
+	sc.strip = depth;
+	sc.check = xa_load(&ix->fallback, (unsigned long)domain) != NULL;
+	err = query_run(sb, file, q->terms, q->nterms, q->limit, q->results, &sc, &q->count,
+			&q->truncated);
+	if (!err && copy_to_user(arg, q, sizeof(*q)))
+		err = -EFAULT;
+out:
 	kfree(q);
 	return err;
 }
@@ -1043,7 +1517,18 @@ static long do_get_info(struct super_block *sb, void __user *arg)
 	info.index_used = ix->used;
 	info.index_entries = ix->entries;
 	info.index_inodes = ix->inode_count;
+	info.domain_depth = ix->domain_depth;
+	info.heterogeneous = ix->hetero_count;
+	if (ix->domain_depth)
+		info.flags |= MOOB_FLAG_DOMAINS;
 	up_read(&ix->lock);
+	{
+		unsigned long idx;
+		void *v;
+
+		xa_for_each(&ix->fallback, idx, v)
+			info.fallback_domains++;
+	}
 	return copy_to_user(arg, &info, sizeof(info)) ? -EFAULT : 0;
 }
 
@@ -1051,6 +1536,8 @@ long moobl_root_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct super_block *sb = file_inode(file)->i_sb;
 
+	if (cmd == MOOB_IOC_QUERY2)
+		return do_query2(sb, file, (void __user *)arg);
 	if (file->f_path.dentry != sb->s_root)
 		return -ENOTTY;
 	switch (cmd) {

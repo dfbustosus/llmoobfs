@@ -1,4 +1,4 @@
-# 0035 — Experiência do desenvolvedor no GitHub: lote 2 (ferramentas)
+# 0039 — Experiência do desenvolvedor no GitHub: lote 2 (ferramentas)
 
 Data: 2026-10-11. Branch: `community/dx-batch2`, criada a partir de `origin/main` (`0a7bf54`,
 merge do PR #27) e rebaseada, antes de publicada, sobre `8a4f1db` (merge do PR #24). Estado: implementado; a medição em Codespaces, a inscrição no OpenSSF Best Practices
@@ -11,7 +11,7 @@ CodeQL para o C de espaço de usuário, `checkpatch.pl` como aviso e labels por 
 mensagem de primeira contribuição. Nada em `layer/`, `kernel/` ou no formato mudou.
 
 Numeração: conferidas `origin/main` e todas as branches remotas; a maior era 0034 (registros
-0033 e 0034 do PR #24, que entrou em `main` durante esta rodada). Este registro fica com 0035.
+0033 e 0034 do PR #24, que entrou em `main` durante esta rodada). Este registro ficou com 0035 (ver a nota de renumeração no fim).
 
 ## Decisões
 
@@ -155,6 +155,10 @@ os mesmos avisos da linha de base; o job terminou verde, como previsto pelo
 `continue-on-error`. O CodeQL (CLI 2.27.2, `security-extended`) registrou a análise de
 `refs/pull/30/merge` com 0 resultados; a lista de arquivos extraídos não foi inspecionada além
 do log do build.
+
+Nota de 2026-10-11: renumerado de 0035 para 0039 ao trazer `main` para a branch. O registro
+0035 (fase Q2a) entrou em `main` pelo PR #31, e as branches `m3/query-v2-q2b` a
+`m3/query-v2-q2d` já usam 0036 a 0038.
 
 ## Próximo passo
 

@@ -48,6 +48,28 @@ do índice. Mudança de modo, dono, grupo ou ACL do próprio `D` marca a partiç
 reavaliar"; a consulta seguinte a essa partição reavalia todas as entradas antes de responder
 (custo linear no tamanho do domínio, pago uma vez por mudança).
 
+**Implementação Q2a (2026-10-11, registro 0035), diferenças em relação ao texto acima.** A
+proposta continua registrada como acima; o comportamento implementado é este:
+
+- Mudança de modo, dono, grupo ou ACL de um **diretório** na profundidade do domínio ou abaixo
+  dela (o próprio `D` ou um intermediário) não reavalia a partição: o domínio passa a responder
+  com verificação de permissão por resultado (como a v1) até a próxima montagem, e `GET_INFO`
+  conta esses domínios em `fallback_domains`. Motivo: reavaliar exigiria percorrer a subárvore
+  sob o lock de escrita do índice; o modo de contingência é correto, mais simples e raro em uso
+  normal (diretórios de agentes não mudam de permissão a cada escrita).
+- Diretórios intermediários entre `D` e o arquivo entram na regra pelo bit de execução: cada um
+  deve deixar atravessar todo processo que atravessa `D` (condição 1 com `o+x`, ou condição 2
+  com execução no lugar de leitura).
+- Arquivo regular com mais de um nome (`nlink > 1`) é heterogêneo, porque outro nome pode estar
+  em outro domínio. Ao voltar a um nome, ele pode continuar heterogêneo até a próxima mudança de
+  modo, dono, grupo, ACL ou renomeação, ou até a próxima montagem (falha segura: fica de fora,
+  nunca aparece a mais).
+- Com `domain_depth=0` a v1 mantém a semântica anterior e continua aberta a todos; a restrição
+  a `CAP_SYS_ADMIN` (§4.5) vale quando os domínios estão ligados.
+- `MOOB_IOC_QUERY2` com o índice desligado (`noindex`) devolve `ENOSYS`, como a v1. Campos de
+  `order_by`, `order`, `cursor`, `flags`, preenchimento, reservados e a marca `MISSING_OK` devem
+  ser zero nesta fase (`EINVAL`); entram nas fases Q2b e Q2d.
+
 ## 4. Interface (UAPI v2)
 
 ### 4.1 `MOOB_IOC_QUERY2`

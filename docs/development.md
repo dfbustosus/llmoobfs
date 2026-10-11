@@ -33,7 +33,7 @@ Containers client, so that `make test`, `make lint` and `make vm-test` run
 without installing anything on your machine; `make vm-test` still loads the
 module only inside its QEMU guest. The time, disk and minimum machine for `make
 vm-test` in a Codespace have not been measured yet, so the container is not
-advertised in the README and declares no `hostRequirements`; journal 0035 tracks
+advertised in the README and declares no `hostRequirements`; journal 0039 tracks
 the measurement.
 
 ## 2. Clone and build on the host
@@ -231,7 +231,7 @@ the `kasan-evidence` artifact holds the console, `dmesg` and `.config`.
 
 - Kernel code (`layer/`, `kernel/`): Linux kernel style, tabs, 80 columns as a
   guide, explicit bounds and endianness, `checkpatch.pl --no-tree` clean where
-  practical (`make checkpatch`; advisory in CI, baseline in journal 0035).
+  practical (`make checkpatch`; advisory in CI, baseline in journal 0039).
 - Tools and tests: C11, `-Wall -Wextra -Werror -Wconversion -Wshadow` (the
   `Makefile`'s `WARN`), no warnings silenced to pass the build.
 - Every source file starts with `// SPDX-License-Identifier: GPL-2.0-only` (C

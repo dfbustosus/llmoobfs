@@ -2,7 +2,7 @@
 
 Data: 2026-10-11. Estado: proposta aprovada pelo mantenedor; lote 1 concluído (registro
 [0032](history/0032-dx-batch1.md)); lote 2 implementado com itens pendentes (registro
-[0035](history/0035-dx-batch2.md)). Complementa [`community-plan.md`](community-plan.md)
+[0039](history/0039-dx-batch2.md)). Complementa [`community-plan.md`](community-plan.md)
 (políticas, templates, CI de lint e DCO) e [`seo-geo-plan.md`](seo-geo-plan.md) (descoberta),
 que já foram executados em grande parte e não são repetidos aqui.
 
@@ -63,7 +63,7 @@ YAML; nada a corrigir.
 - `checkpatch.pl --no-tree` em `layer/` e `kernel/` no job `Lint`, começando como aviso.
 - Labeler por caminho (`area/*`) e mensagem de primeira contribuição.
 
-Estado em 2026-10-11 (registro [0035](history/0035-dx-batch2.md)):
+Estado em 2026-10-11 (registro [0039](history/0039-dx-batch2.md)):
 
 | Item | Estado |
 | --- | --- |
