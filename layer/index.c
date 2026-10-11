@@ -1308,6 +1308,9 @@ struct moobl_qscope {
 	bool ordered;		/* walk the order_type run of scan; test every term */
 	bool desc;
 	u8 otype;
+	bool leap;		/* intersect the equality terms below by leapfrog (spec §4.4) */
+	u8 nleap;
+	u8 leap_idx[MOOB_QUERY_MAX_TERMS];	/* equality terms; the first one leads */
 };
 
 /* Path relative to the scope: the mount-relative path without its first `strip` names. */
@@ -1320,6 +1323,131 @@ static const char *scope_path(const char *path, unsigned int strip)
 		path++;
 	}
 	return *path ? path : NULL;
+}
+
+/* Records the inode of e as a candidate; with want_key, also e's scan key for the cursor. */
+static int add_candidate(struct moobl_index *ix, struct moobl_ix_entry *e,
+			 const struct moobl_qscope *sc, struct moobl_candidate *c, char *pathbuf,
+			 bool want_key)
+{
+	struct moob_query_result tmp;
+	int err = 0;
+
+	fill_result(ix, e->owner, &tmp, pathbuf);
+	c->ino = tmp.ino;
+	c->path = NULL;
+	c->value = NULL;
+	if (!(tmp.flags & MOOB_RES_PATH_UNKNOWN)) {
+		const char *rel = scope_path(tmp.path, sc->strip);
+
+		if (rel) {
+			c->path = kstrdup(rel, GFP_ATOMIC);
+			if (!c->path)
+				err = -ENOMEM;
+		}
+	}
+	if (want_key) {
+		c->type = e->type;
+		c->len = e->len;
+		c->value = kmalloc(max_t(u16, e->len, 1), GFP_ATOMIC);
+		if (c->value)
+			memcpy(c->value, e->value, e->len);
+		else
+			err = -ENOMEM;
+	}
+	return err;
+}
+
+/* First entry of the equality run of t whose inode is >= ino, or NULL past the run. */
+static struct moobl_ix_entry *seek_eq(struct moobl_ix_name *nm, const struct moob_query_term *t,
+				      u64 ino)
+{
+	struct rb_node *n = nm->entries.rb_node;
+	struct moobl_ix_entry *best = NULL;
+
+	while (n) {
+		struct moobl_ix_entry *e = rb_entry(n, struct moobl_ix_entry, node);
+
+		if (entry_cmp(e, t->type, t->value, t->len, ino) >= 0) {
+			best = e;
+			n = n->rb_left;
+		} else {
+			n = n->rb_right;
+		}
+	}
+	if (!best || best->type != t->type ||
+	    value_cmp(best->type, best->value, best->len, t->type, t->value, t->len))
+		return NULL;
+	return best;
+}
+
+/*
+ * Leapfrog intersection (docs/spec-query-v2.md §4.4): inside one value, the entries of an
+ * equality term are ordered by inode, so every term seeks to the largest inode seen so far
+ * until all agree. Each step is a logarithmic seek, and the inodes examined are bounded by
+ * the shortest run rather than by the first term's. Results come in inode order, so the
+ * resume key is the lead term's value with the last inode; the other terms are tested only
+ * on inodes of the intersection. Called with the index lock held for reading.
+ */
+static int leap_collect(struct moobl_index *ix, const struct moobl_qscope *sc,
+			const struct moob_query_term *terms, u32 nterms,
+			struct moobl_resume *resume, struct moobl_candidate *cand, u32 *ncand,
+			char *pathbuf, bool want_key, bool *more)
+{
+	struct moobl_ix_name *nm[MOOB_QUERY_MAX_TERMS];
+	u64 x = 0;
+	u32 k;
+
+	if (resume->valid) {
+		if (resume->ino == U64_MAX)
+			return 0;
+		x = resume->ino + 1;
+	}
+	for (k = 0; k < sc->nleap; k++) {
+		nm[k] = name_find(ix, terms[sc->leap_idx[k]].name, sc->domain, false);
+		if (!nm[k])
+			return 0;
+	}
+	for (;;) {
+		struct moobl_ix_entry *lead = NULL;
+		bool agreed = false;
+		int err;
+
+		while (!agreed) {
+			agreed = true;
+			for (k = 0; k < sc->nleap; k++) {
+				struct moobl_ix_entry *e = seek_eq(nm[k], &terms[sc->leap_idx[k]], x);
+
+				if (!e)
+					return 0;
+				if (e->owner->ino != x) {
+					x = e->owner->ino;
+					agreed = false;
+					break;
+				}
+				if (!k)
+					lead = e;
+			}
+		}
+		resume->valid = true;
+		resume->type = lead->type;
+		resume->len = lead->len;
+		resume->ino = x;
+		memcpy(resume->value, lead->value, lead->len);
+		if (inode_matches_all(lead->owner, terms, nterms)) {
+			err = add_candidate(ix, lead, sc, &cand[*ncand], pathbuf, want_key);
+			(*ncand)++;
+			if (err)
+				return err;
+			if (*ncand == MOOBL_QUERY_CHUNK) {
+				*more = true;
+				return 0;
+			}
+		}
+		if (x == U64_MAX)
+			return 0;
+		x++;
+	}
 }
 
 /*
@@ -1336,7 +1464,6 @@ static long query_run(struct super_block *sb, struct file *file,
 	struct moob_query_result *one;
 	struct moobl_candidate *cand;
 	struct moobl_resume *resume;
-	struct moob_query_result tmp;
 	char *pathbuf;
 	u32 i, count = 0, truncated = 0;
 	bool exhausted = false;
@@ -1364,6 +1491,11 @@ static long query_run(struct super_block *sb, struct file *file,
 		bool more = false;
 
 		down_read(&ix->lock);
+		if (sc->leap) {
+			err = leap_collect(ix, sc, terms, nterms, resume, cand, &ncand, pathbuf,
+					   last != NULL, &more);
+			goto chunk_done;
+		}
 		nm = sc->all ? name_lower_bound(ix, sc->scan, resume->pdomain, resume->phetero)
 			     : name_find(ix, sc->scan, sc->domain, false);
 		if (nm && (nm->domain != resume->pdomain || nm->hetero != resume->phetero)) {
@@ -1409,34 +1541,14 @@ static long query_run(struct super_block *sb, struct file *file,
 					inode_matches_rest(e->owner, terms, nterms);
 			if (!match)
 				continue;
-			fill_result(ix, e->owner, &tmp, pathbuf);
-			cand[ncand].ino = tmp.ino;
-			cand[ncand].path = NULL;
-			cand[ncand].value = NULL;
-			if (!(tmp.flags & MOOB_RES_PATH_UNKNOWN)) {
-				const char *rel = scope_path(tmp.path, sc->strip);
-
-				if (rel) {
-					cand[ncand].path = kstrdup(rel, GFP_ATOMIC);
-					if (!cand[ncand].path)
-						err = -ENOMEM;
-				}
-			}
-			if (last) {
-				cand[ncand].type = e->type;
-				cand[ncand].len = e->len;
-				cand[ncand].value = kmalloc(max_t(u16, e->len, 1), GFP_ATOMIC);
-				if (cand[ncand].value)
-					memcpy(cand[ncand].value, e->value, e->len);
-				else
-					err = -ENOMEM;
-			}
+			err = add_candidate(ix, e, sc, &cand[ncand], pathbuf, last != NULL);
 			ncand++;
 			if (ncand == MOOBL_QUERY_CHUNK) {
 				more = true;
 				break;
 			}
 		}
+chunk_done:
 		if (!more)
 			exhausted = true;
 		up_read(&ix->lock);
@@ -1715,6 +1827,14 @@ static long do_query2(struct super_block *sb, struct file *file, void __user *ar
 	sc.desc = q->order == MOOB_ORDER_DESC;
 	sc.otype = q->order_type;
 	sc.scan = sc.ordered ? q->order_by : q->terms[0].name;
+	if (!sc.ordered) {
+		for (i = 0; i < q->nterms; i++)
+			if (q->terms[i].op == MOOB_OP_EQ)
+				sc.leap_idx[sc.nleap++] = (u8)i;
+		sc.leap = sc.nleap >= 2;
+		if (sc.leap)
+			sc.scan = q->terms[sc.leap_idx[0]].name;	/* cursor key: the lead term */
+	}
 	err = query_hash(ix, q, domain, sc.check, &qhash);
 	if (err)
 		goto out;
