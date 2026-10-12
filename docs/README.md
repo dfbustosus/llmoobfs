@@ -51,6 +51,7 @@ over a mature filesystem) and [ADR-0009](decisions/0009-query-role-and-user-spac
 | --- | --- | --- |
 | [benchmark-plan.md](benchmark-plan.md) | PT | M4 plan: questions, baselines, workloads, what a result must show |
 | [benchmark-harness.md](benchmark-harness.md) | PT | Harness specification: dataset, SQLite baselines, latency records, report, where raw archives go |
+| [benchmark-harness.en.md](benchmark-harness.en.md) | EN | English translation of benchmark-harness.md (M4 harness specification) |
 | [bench-accelerated-guest.md](bench-accelerated-guest.md) | PT | How to run a campaign in an accelerated guest or a cloud VM |
 | [../bench/results/](../bench/results/README.md) | EN | Pilot campaign results and the `bench-evidence` release for raw archives |
 
