@@ -1,9 +1,10 @@
 # Plano de experiência do desenvolvedor no GitHub
 
 Data: 2026-10-11. Estado: proposta aprovada pelo mantenedor; lote 1 concluído (registro
-[0032](history/0032-dx-batch1.md)); lote 2 implementado com itens pendentes (registro
-[0039](history/0039-dx-batch2.md)); lote 3 implementado, com ações do mantenedor pendentes
-(registro [0041](history/0041-dx-batch3.md)). Complementa [`community-plan.md`](community-plan.md)
+[0032](history/0032-dx-batch1.md)); lote 2 implementado; pendentes a medição em Codespaces e a
+inscrição no OpenSSF Best Practices (registro [0039](history/0039-dx-batch2.md)); lote 3
+concluído, com as ações do mantenedor aplicadas em 2026-10-12 (registro
+[0041](history/0041-dx-batch3.md)). Complementa [`community-plan.md`](community-plan.md)
 (políticas, templates, CI de lint e DCO) e [`seo-geo-plan.md`](seo-geo-plan.md) (descoberta),
 que já foram executados em grande parte e não são repetidos aqui.
 
