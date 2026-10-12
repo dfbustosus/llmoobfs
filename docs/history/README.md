@@ -56,3 +56,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0036 — Fase Q2b: ordenação e cursor no `QUERY2`](0036-phase-q2b-order-cursor.md)
 - [0037 — Fase Q2c: interseção por avanço alternado no `QUERY2`](0037-phase-q2c-leapfrog.md)
 - [0038 — Fase Q2d: termos "ausente ou ..." e lote no `QUERY2`](0038-phase-q2d-missing-batch.md)
+- [0042 — Novo host de medição: Mac mini Server 2011 com Debian 13](0042-bench-host-macmini.md)
