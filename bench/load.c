@@ -326,13 +326,15 @@ static int q2_order_set(struct moob_query2 *q2)
 	char buf[MOOB_QUERY_NAME_MAX + 32], *t, *d;
 	int type;
 
-	if (strlen(q2_order) >= sizeof buf) return -1;
-	strcpy(buf, q2_order);
+	size_t olen = strlen(q2_order);
+
+	if (olen >= sizeof buf) return -1;
+	memcpy(buf, q2_order, olen + 1);
 	t = strchr(buf, ':'); if (!t) return -1; *t++ = 0;
 	d = strchr(t, ':'); if (!d) return -1; *d++ = 0;
 	type = parse_type(t);
-	if (type < 0 || strlen(buf) > MOOB_QUERY_NAME_MAX) return -1;
-	strcpy(q2->order_by, buf);
+	if (type < 0 || strlen(buf) >= sizeof q2->order_by) return -1;
+	memcpy(q2->order_by, buf, strlen(buf) + 1);
 	q2->order_type = (__u8)type;
 	q2->order = !strcmp(d, "desc") ? MOOB_ORDER_DESC : MOOB_ORDER_ASC;
 	return 0;

@@ -70,3 +70,10 @@ A etapa da suíte levou 50 minutos (22 na Q2a), pelo custo das consultas paginad
 instrumentado. O merge foi recusado por conflito com a main (lote 2 de ferramentas da outra
 sessão, registro 0039, só no changelog e no índice de registros); resolvido mantendo as duas
 entradas, o que exige nova execução do CI antes do merge.
+
+O CodeQL, que entrou na main com o lote 2 da outra sessão, apontou duas escritas "sem limite"
+(`cpp/unbounded-write`) em `strcpy` de argumentos de linha de comando, em `tools/moobfs-index.c`
+e `bench/load.c`. Os dois casos já eram precedidos de verificação de tamanho (falsos
+positivos), mas foram trocados por `memcpy` com o tamanho verificado contra o destino, o que
+torna o limite explícito; o mesmo padrão em `tests/query.c`, que o CodeQL não compila, também
+foi trocado.
