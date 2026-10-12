@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Contributor experience, batch 3 (plan `docs/dx-plan.md`, journal 0041): `README.md` and
+  `README.pt-BR.md` open with one sentence, a real demonstration (domain-scoped `QUERY2` as a
+  regular user, results filtered by permission, v1 refused) captured from `make vm-test`, and a
+  four-command quickstart, followed by the experimental notice, now compact and dated
+  2026-10-11 (UAPI v2, pilot-grade measurements only); the demonstration is a new `vm/suite.sh`
+  block with assertions and the `DEMO_PASS` marker. `docs/README.md` indexes every document
+  with its language. `docs/assets/social-preview.svg`/`.png` for the GitHub social preview.
+  Benchmark raw archives move to one release, `bench-evidence`: `bench/evidence-release.md`
+  (release text and manifest), `scripts/bench-evidence-release.sh` (dry run by default;
+  `--apply` uploads, verifies size and SHA-256 through the API and the public URL, then deletes
+  the per-campaign pre-releases and keeps their tags; `add` for new campaigns),
+  `bench/results/README.md`, links in `bench/results/*/README.md` and
+  `docs/benchmark-harness.md` §7.1. The release move itself is pending for the maintainer.
 - Contributor tooling, batch 2 (plan `docs/dx-plan.md`, journal 0039): `.devcontainer/`
   (Ubuntu 24.04, docker-in-docker, host tools; not yet advertised, the Codespaces measurement
   of `make vm-test` is pending); OpenSSF Scorecard workflow and README badge; CodeQL for the
