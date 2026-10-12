@@ -73,6 +73,7 @@ over a mature filesystem) and [ADR-0009](decisions/0009-query-role-and-user-spac
 | Document | Lang | What it covers |
 | --- | --- | --- |
 | [security-roadmap.md](security-roadmap.md) | PT | Security and robustness items S1–S11 (threat model, syzkaller, fuzzing, hardening) |
+| [security-roadmap.en.md](security-roadmap.en.md) | EN | English translation of security-roadmap.md (security and robustness roadmap S1–S11) |
 | [distribution-strategy.md](distribution-strategy.md) | PT | Proposed deployment model, DKMS packaging, kernel matrix and release stages |
 | [community-plan.md](community-plan.md) | PT | Plan for external contributions (policies, templates, CI); largely executed |
 | [seo-geo-plan.md](seo-geo-plan.md) | PT | Discoverability audit and plan for the README, site and docs |
