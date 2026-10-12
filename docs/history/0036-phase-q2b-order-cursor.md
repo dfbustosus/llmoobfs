@@ -63,3 +63,10 @@ marcadores anteriores até `MOOBFS_LAYER_PASS`. A suíte passou na primeira exec
 
 PR da Q2b depois do merge da Q2a. No host de medição: o teste do canal de tempo, o W3 por
 domínio e "N mais recentes". Depois, fase Q2c (interseção por leapfrog).
+
+KASAN e lockdep no CI do pull request 32 (kernel 6.12.112-virtme), execução 38173795652:
+`QUERY2_ORDER_PASS` e `QUERY2_PASS` em ext4, btrfs e XFS e `MOOBFS_LAYER_PASS`, sem relatório.
+A etapa da suíte levou 50 minutos (22 na Q2a), pelo custo das consultas paginadas no kernel
+instrumentado. O merge foi recusado por conflito com a main (lote 2 de ferramentas da outra
+sessão, registro 0039, só no changelog e no índice de registros); resolvido mantendo as duas
+entradas, o que exige nova execução do CI antes do merge.
