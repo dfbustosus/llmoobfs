@@ -58,3 +58,4 @@ Preservação depende de commits e cópias: nenhum disco ou serviço garante ret
 - [0038 — Fase Q2d: termos "ausente ou ..." e lote no `QUERY2`](0038-phase-q2d-missing-batch.md)
 - [0042 — Novo host de medição: Mac mini Server 2011 com Debian 13](0042-bench-host-macmini.md)
 - [0043 — Canal de tempo: `QUERY2` por domínio contra a v1 (teste 4 da especificação)](0043-timing-channel-query2.md)
+- [0044 — `QUERY2` medido contra a v1 e revisão do plano de igualdade da Q2c](0044-q2-measured-equality-plan.md)

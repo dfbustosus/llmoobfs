@@ -53,3 +53,10 @@ verificação do plano passou nos três inferiores (inodes crescentes com a cria
 ## Próximo passo
 
 PR da Q2c depois do merge da Q2b. Fase Q2d: lote e `MISSING_OK`.
+
+## Nota (2026-10-12)
+
+Medido no host do registro 0042, o avanço alternado descrito acima foi trocado por uma varredura
+da sequência mais curta entre os termos `EQ`, escolhida por um percurso em paralelo; números e
+justificativa no registro 0044. A verificação do plano pela ordem da resposta continua válida
+(o plano revisado também responde em ordem crescente de inode).

@@ -6,9 +6,13 @@
   formerly `reserved[0]` is now `flags`) and `MOOB_IOC_QUERY2_BATCH` (up to 8 QUERY2 requests on
   one domain, one permission check, all validated before any runs). Operators ending in `?` in
   `query`, `moobfs-index` and the bench query files; `query q2batch`.
-- Phase Q2c (journal 0037): `QUERY2` without `order_by` intersects two or more equality
-  terms by leapfrog over their inode-ordered runs instead of scanning the first term. Test
-  client `--raw` prints the kernel's order.
+- Phase Q2c (journals 0037 and 0044): `QUERY2` without `order_by` and with two or more
+  equality terms finds the shortest of their inode-ordered runs by walking them in lockstep
+  and scans only that one; a first version with leapfrog seeks was measured slower whenever
+  the first term's run was short and was replaced. Test client `--raw` prints the kernel's
+  order. Measurements on the Mac mini host (`bench/q2-campaign.sh`, `bench/q2c-compare.sh`,
+  `bench/results/2026-10-12-macmini-q2/`): QUERY2 answers v1 Q3 24 to 30 times faster and Q4
+  about 7 times faster, with the same inodes.
 - Phase Q2b (journal 0036): `QUERY2` orders by an attribute (`order_by`, `order`,
   `order_type`, ties by inode) and pages with an authenticated 128-byte cursor (`ESTALE` for
   a cursor from another query or mount, corrupt, or issued before a fallback). Oracle

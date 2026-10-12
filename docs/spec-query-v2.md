@@ -158,6 +158,13 @@ saem em ordem de inode e o cursor guarda o valor desse termo com o último inode
 uma busca logarítmica na árvore de cada termo, até todos chegarem ao mesmo inode; os demais
 termos (inclusive os `EQ`, por simplicidade) são testados só nos inodes da interseção.
 
+**Revisão do plano de igualdade (2026-10-12, registro 0044).** Medido no host do registro 0042,
+o avanço alternado só ganhou quando a sequência do primeiro termo era longa e foi 2,7 a 3,6 vezes
+mais lento que a varredura simples quando ela era curta. O plano passou a ser: medir as
+sequências dos termos `EQ` em paralelo até a primeira terminar e varrer só essa, testando todos
+os termos. A retomada desse plano usa só o inode. A proposta original de §4.4 fica registrada
+acima.
+
 ### 4.5 A v1
 
 **[decisão aceita]** Proposta: `MOOB_IOC_QUERY` (v1) sobre a raiz continua existindo, com a semântica
