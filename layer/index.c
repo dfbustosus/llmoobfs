@@ -1176,6 +1176,7 @@ struct moobl_resume {
 	u8 type;
 	u16 len;
 	u64 ino;
+	int lead;		/* equality plan: index into leap_idx of the scanned run; -1: unset */
 	u8 value[MOOB_QUERY_VALUE_MAX];
 };
 
@@ -1393,13 +1394,23 @@ static struct moobl_ix_entry *seek_eq(struct moobl_ix_name *nm, const struct moo
 	return best;
 }
 
+/* True while e is still inside the equality run of t. */
+static bool in_eq_run(const struct moobl_ix_entry *e, const struct moob_query_term *t)
+{
+	return e->type == t->type &&
+	       !value_cmp(e->type, e->value, e->len, t->type, t->value, t->len);
+}
+
 /*
- * Leapfrog intersection (docs/spec-query-v2.md §4.4): inside one value, the entries of an
- * equality term are ordered by inode, so every term seeks to the largest inode seen so far
- * until all agree. Each step is a logarithmic seek, and the inodes examined are bounded by
- * the shortest run rather than by the first term's. Results come in inode order, so the
- * resume key is the lead term's value with the last inode; the other terms are tested only
- * on inodes of the intersection. Called with the index lock held for reading.
+ * Equality plan (docs/spec-query-v2.md §4.4, revised by journal 0044): inside one value, the
+ * entries of an equality term are ordered by inode. Once per call, the runs of all equality
+ * terms are walked in lockstep from the resume inode until the first one ends: that one is
+ * the shortest, at a cost proportional to it. Then that run alone is scanned and every term is
+ * tested on each inode. Results come in inode order whichever run leads, so a call resumes
+ * after the last inode only. The first implementation (journal 0037) was a leapfrog with one
+ * tree seek per step; on the benchmark host it was 2.7 to 3.6 times slower than scanning a
+ * short run, and only faster when the first term's run was long. Called with the index lock
+ * held for reading.
  */
 static int leap_collect(struct moobl_index *ix, const struct moobl_qscope *sc,
 			const struct moob_query_term *terms, u32 nterms,
@@ -1407,6 +1418,9 @@ static int leap_collect(struct moobl_index *ix, const struct moobl_qscope *sc,
 			char *pathbuf, bool want_key, bool *more)
 {
 	struct moobl_ix_name *nm[MOOB_QUERY_MAX_TERMS];
+	struct rb_node *it[MOOB_QUERY_MAX_TERMS];
+	const struct moob_query_term *lt;
+	struct moobl_ix_entry *e;
 	u64 x = 0;
 	u32 k;
 
@@ -1420,34 +1434,38 @@ static int leap_collect(struct moobl_index *ix, const struct moobl_qscope *sc,
 		if (!nm[k])
 			return 0;
 	}
-	for (;;) {
-		struct moobl_ix_entry *lead = NULL;
-		bool agreed = false;
-		int err;
-
-		while (!agreed) {
-			agreed = true;
+	if (resume->lead < 0) {
+		for (k = 0; k < sc->nleap; k++) {
+			e = seek_eq(nm[k], &terms[sc->leap_idx[k]], x);
+			if (!e)
+				return 0;	/* an empty run: the intersection is empty */
+			it[k] = &e->node;
+		}
+		while (resume->lead < 0) {
 			for (k = 0; k < sc->nleap; k++) {
-				struct moobl_ix_entry *e = seek_eq(nm[k], &terms[sc->leap_idx[k]], x);
+				struct rb_node *n = rb_next(it[k]);
 
-				if (!e)
-					return 0;
-				if (e->owner->ino != x) {
-					x = e->owner->ino;
-					agreed = false;
+				if (!n || !in_eq_run(rb_entry(n, struct moobl_ix_entry, node),
+						     &terms[sc->leap_idx[k]])) {
+					resume->lead = (int)k;	/* the first run to end */
 					break;
 				}
-				if (!k)
-					lead = e;
+				it[k] = n;
 			}
 		}
+	}
+	lt = &terms[sc->leap_idx[resume->lead]];
+	for (e = seek_eq(nm[resume->lead], lt, x); e;) {
+		struct rb_node *n;
+
 		resume->valid = true;
-		resume->type = lead->type;
-		resume->len = lead->len;
-		resume->ino = x;
-		memcpy(resume->value, lead->value, lead->len);
-		if (inode_matches_all(lead->owner, terms, nterms)) {
-			err = add_candidate(ix, lead, sc, &cand[*ncand], pathbuf, want_key);
+		resume->type = e->type;
+		resume->len = e->len;
+		resume->ino = e->owner->ino;
+		memcpy(resume->value, e->value, e->len);
+		if (inode_matches_all(e->owner, terms, nterms)) {
+			int err = add_candidate(ix, e, sc, &cand[*ncand], pathbuf, want_key);
+
 			(*ncand)++;
 			if (err)
 				return err;
@@ -1456,10 +1474,12 @@ static int leap_collect(struct moobl_index *ix, const struct moobl_qscope *sc,
 				return 0;
 			}
 		}
-		if (x == U64_MAX)
-			return 0;
-		x++;
+		n = rb_next(&e->node);
+		e = n ? rb_entry(n, struct moobl_ix_entry, node) : NULL;
+		if (e && !in_eq_run(e, lt))
+			e = NULL;
 	}
+	return 0;
 }
 
 /*
@@ -1493,6 +1513,7 @@ static long query_run(struct super_block *sb, struct file *file,
 	}
 	if (start)
 		*resume = *start;
+	resume->lead = -1;
 	resume->pdomain = sc->all ? resume->pdomain : sc->domain;
 	if (last)
 		last->valid = false;
@@ -1746,7 +1767,9 @@ static int cursor_decode(struct moobl_index *ix, const u8 *in, u64 qhash, const 
 	r->type = c.type;
 	r->len = c.len;
 	r->ino = c.ino;
-	if (c.len <= MOOBL_CURSOR_INLINE) {
+	if (sc->leap) {
+		r->len = 0;	/* the equality plan resumes after the inode, whichever run leads */
+	} else if (c.len <= MOOBL_CURSOR_INLINE) {
 		memcpy(r->value, c.value, c.len);
 	} else {
 		struct moobl_ix_inode *rec;
