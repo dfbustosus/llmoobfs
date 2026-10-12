@@ -160,6 +160,11 @@ Nota de 2026-10-11: renumerado de 0035 para 0039 ao trazer `main` para a branch.
 0035 (fase Q2a) entrou em `main` pelo PR #31, e as branches `m3/query-v2-q2b` a
 `m3/query-v2-q2d` já usam 0036 a 0038.
 
+Nota de 2026-10-12: o mantenedor aplicou o comando de permissões do `GITHUB_TOKEN`. Conferido com
+`gh api repos/studiomoob/llmoobfs/actions/permissions/workflow`:
+`default_workflow_permissions: read` e `can_approve_pull_request_reviews: false`. Seguem
+pendentes a medição em Codespaces e a inscrição no OpenSSF Best Practices.
+
 ## Próximo passo
 
 Medir `make vm-test` num Codespace e decidir o botão. Zerar os 14 avisos do `checkpatch.pl` e
