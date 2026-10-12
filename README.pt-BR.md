@@ -13,8 +13,12 @@ um projeto de pesquisa sobre armazenamento para a memória de agentes de LLM.
 
 Cada diretório de primeiro nível da montagem é um domínio de permissão. O root marca quatro
 arquivos de memória com um atributo tipado; depois a Alice (uid 1001) consulta. Ela recebe a
-própria memória e, no domínio compartilhado `team/`, só o arquivo que pode ler. O domínio do Bob
-e o `QUERY` da montagem inteira (v1, para administradores) são recusados a ela:
+própria memória e, no domínio compartilhado `team/`, só o `style.md`. O `salary.md` não aparece
+porque um domínio só indexa arquivos que todos os que podem entrar nele conseguem ler (a regra de
+homogeneidade de [spec-query-v2](docs/spec-query-v2.md) §3); legível só pelo Bob, ele fica fora do
+índice de `team/` para qualquer chamador, inclusive o Bob e o root, e arquivos privados devem ficar
+num domínio próprio. O domínio do Bob e o `QUERY` da montagem inteira (v1, para administradores)
+são recusados a ela:
 
 ```text
 # (prepared on the lower ext4: alice/ uid 1001 0700, bob/ uid 1002 0700, team/ 0755)

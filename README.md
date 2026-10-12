@@ -17,8 +17,11 @@ project exploring storage for LLM-agent memory.
 
 Each top-level directory of the mount is a permission domain. Root tags four memory files with
 a typed attribute; Alice (uid 1001) then queries. She gets her own memory and, in the shared
-`team/` domain, only the file she can read. Bob's domain and the whole-mount `QUERY` (v1, for
-administrators) are refused to her:
+`team/` domain, only `style.md`. `salary.md` is missing because a domain indexes only files that
+everyone who can enter the domain can read (the homogeneity rule of
+[spec-query-v2](docs/spec-query-v2.md) §3); being readable by Bob alone, it is outside `team/`'s
+index for every caller, Bob and root included, and private files belong in their own domain.
+Bob's domain and the whole-mount `QUERY` (v1, for administrators) are refused to her:
 
 ```text
 # (prepared on the lower ext4: alice/ uid 1001 0700, bob/ uid 1002 0700, team/ 0755)

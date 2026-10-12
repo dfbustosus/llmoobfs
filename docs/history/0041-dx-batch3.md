@@ -282,6 +282,12 @@ Comandos executados nesta sessão (host macOS, Apple Silicon, Docker 29.8.2):
    `docs/assets/social-preview.png`.
 3. Issues de tradução: rodar os comandos `gh issue create` da seção anterior.
 
+Nota de 2026-10-11 (revisão da sessão coordenadora): o parágrafo que apresenta a demonstração
+dizia que a Alice recebe em `team/` "só o arquivo que pode ler", sugerindo um filtro por
+chamador. Pela regra de homogeneidade (`docs/spec-query-v2.md` §3), o `salary.md` fica fora da
+partição de `team/` para qualquer chamador; o `QUERY2` não verifica permissão por resultado. Os
+dois READMEs passaram a explicar isso. Saída da demonstração e testes inalterados.
+
 ## Próximo passo
 
 Depois do `--apply`, conferir os links do README e de `bench/results/` e registrar uma nota
